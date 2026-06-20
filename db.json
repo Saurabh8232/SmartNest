@@ -1,0 +1,189 @@
+{
+  "dashboard": {
+    "id": 1,
+    "voltage": 230,
+    "current": 5.2,
+    "power": 1196,
+    "energy": 15.8,
+    "totalDevices": 3,
+    "activeRelays": 4,
+    "totalCurrent": 3.7,
+    "systemOnline": true,
+    "lastUpdated": "2026-06-12T14:30:00Z"
+  },
+
+  "mainBoard": {
+    "masterLockEnabled": false,
+    "totalCurrent": 2.4,
+    "relays": [
+      {
+        "id": "1",
+        "name": "Light",
+        "number": 1,
+        "isOn": true,
+        "current": 0.5,
+        "status": "normal"
+      },
+      {
+        "id": "2",
+        "name": "Fan",
+        "number": 2,
+        "isOn": true,
+        "current": 0.8,
+        "status": "normal"
+      },
+      {
+        "id": "3",
+        "name": "Pump",
+        "number": 3,
+        "isOn": false,
+        "current": 0,
+        "status": "normal"
+      },
+      {
+        "id": "4",
+        "name": "Socket",
+        "number": 4,
+        "isOn": true,
+        "current": 1.1,
+        "status": "normal"
+      }
+    ]
+  },
+
+  "digitalBoard": {
+    "relays": [
+      {
+        "id": "1",
+        "name": "Room Light",
+        "isOn": true,
+        "current": 0.4,
+        "power": 92,
+        "status": "normal"
+      },
+      {
+        "id": "2",
+        "name": "TV",
+        "isOn": false,
+        "current": 0,
+        "power": 0,
+        "status": "normal"
+      },
+      {
+        "id": "3",
+        "name": "Exhaust Fan",
+        "isOn": true,
+        "current": 0.3,
+        "power": 65,
+        "status": "normal"
+      },
+      {
+        "id": "4",
+        "name": "Water Heater",
+        "isOn": false,
+        "current": 0,
+        "power": 0,
+        "status": "normal"
+      }
+    ]
+  },
+
+  "ac": {
+    "id": 1,
+    "isOn": true,
+    "temperature": 24,
+    "mode": "cool",
+    "fanSpeed": "medium",
+    "swingOn": true,
+    "irBlasterAvailable": true
+  },
+
+  "devices": [
+    {
+      "id": "1",
+      "name": "ESP32 Main Board",
+      "deviceId": "MB001",
+      "ipAddress": "192.168.1.101",
+      "macAddress": "AA:BB:CC:11:22:33",
+      "isOnline": true,
+      "rssi": -45,
+      "lastConnected": "2026-06-12T14:25:00Z"
+    },
+    {
+      "id": "2",
+      "name": "Digital Board",
+      "deviceId": "DB001",
+      "ipAddress": "192.168.1.102",
+      "macAddress": "AA:BB:CC:44:55:66",
+      "isOnline": true,
+      "rssi": -58,
+      "lastConnected": "2026-06-12T14:20:00Z"
+    },
+    {
+      "id": "3",
+      "name": "AC Controller",
+      "deviceId": "AC001",
+      "ipAddress": "192.168.1.103",
+      "macAddress": "AA:BB:CC:77:88:99",
+      "isOnline": true,
+      "rssi": -62,
+      "lastConnected": "2026-06-12T14:15:00Z"
+    }
+  ],
+
+  "history": {
+    "electricalRecords": [
+      {
+        "id": "1",
+        "timestamp": "2026-06-12T10:00:00Z",
+        "voltage": 228,
+        "current": 4.9,
+        "power": 1117,
+        "energy": 14.5
+      }
+    ],
+
+    "relayRecords": [
+      {
+        "id": "1",
+        "relayName": "Fan",
+        "action": "on",
+        "timestamp": "2026-06-12T09:15:00Z"
+      }
+    ],
+
+    "acRecords": [
+      {
+        "id": "1",
+        "action": "temperature_change",
+        "oldValue": "26",
+        "newValue": "24",
+        "timestamp": "2026-06-12T11:00:00Z"
+      }
+    ]
+  },
+
+  "alerts": [
+    {
+      "id": "1",
+      "type": "electrical",
+      "title": "High Current Warning",
+      "description": "Current exceeded safe limit.",
+      "severity": "warning",
+      "suggestedSolution": "Check connected appliances.",
+      "timestamp": "2026-06-12T13:00:00Z",
+      "isResolved": false
+    },
+
+    {
+      "id": "2",
+      "type": "communication",
+      "title": "Device Offline",
+      "description": "Digital Board disconnected.",
+      "severity": "critical",
+      "suggestedSolution": "Check WiFi connection.",
+      "timestamp": "2026-06-12T12:00:00Z",
+      "isResolved": true
+    }
+  ]
+}
