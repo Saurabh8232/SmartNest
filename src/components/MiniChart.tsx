@@ -2,14 +2,14 @@ import React, { useState } from 'react';
 import { LayoutChangeEvent, StyleSheet, View } from 'react-native';
 
 interface Point { timestamp: string; value: number; }
-interface Props { data: readonly Point[]; color?: string; height?: number; }
+interface Props { data: readonly Point[]; color?: string; height?: number; width?: number; }
 
-export default function MiniChart({ data, color = '#00d4ff', height = 56 }: Props) {
-  const [width, setWidth] = useState(0);
+export default function MiniChart({ data, color = '#00d4ff', height = 56, width: initialWidth = 0 }: Props) {
+  const [width, setWidth] = useState(initialWidth);
 
   const onLayout = (e: LayoutChangeEvent) => {
-    const w = e.nativeEvent.layout.width;
-    if (w > 0) setWidth(w);
+    const measuredWidth = e.nativeEvent.layout.width;
+    if (measuredWidth > 0 && initialWidth === 0) setWidth(measuredWidth);
   };
 
   const containerStyle = [styles.container, { height }];

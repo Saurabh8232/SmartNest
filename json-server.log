@@ -1,0 +1,65 @@
+
+> SmartNest@0.0.1 serve:db
+> json-server --watch db.json --host 0.0.0.0 --port 3000
+
+
+  \{^_^}/ hi!
+
+  Loading db.json
+  Done
+
+  Resources
+  http://0.0.0.0:3000/dashboard
+  http://0.0.0.0:3000/mainBoard
+  http://0.0.0.0:3000/main-board
+  http://0.0.0.0:3000/digitalBoard
+  http://0.0.0.0:3000/digital-board
+  http://0.0.0.0:3000/ac
+  http://0.0.0.0:3000/mqtt
+  http://0.0.0.0:3000/devices
+  http://0.0.0.0:3000/history
+  http://0.0.0.0:3000/energyHistory
+  http://0.0.0.0:3000/acActivityHistory
+  http://0.0.0.0:3000/alerts
+
+  Home
+  http://0.0.0.0:3000
+
+  Type s + enter at any time to create a snapshot of the database
+  Watching...
+
+[0mGET /dashboard [32m200[0m 30.476 ms - 1664[0m
+[0mGET /energyHistory?period=daily [32m200[0m 23.479 ms - 1530[0m
+[0mGET /acActivityHistory?period=daily [32m200[0m 17.852 ms - 802[0m
+[0mGET /dashboard [32m200[0m 21.057 ms - 1664[0m
+  db.json has changed, reloading...
+
+  Loading db.json
+  db.json has changed, reloading...
+  Done
+
+  Resources
+  http://0.0.0.0:3000/dashboard
+  http://0.0.0.0:3000/mainBoard
+  http://0.0.0.0:3000/main-board
+  http://0.0.0.0:3000/digitalBoard
+  http://0.0.0.0:3000/digital-board
+  http://0.0.0.0:3000/ac
+  http://0.0.0.0:3000/mqtt
+  http://0.0.0.0:3000/devices
+  http://0.0.0.0:3000/history
+  http://0.0.0.0:3000/energyHistory
+  http://0.0.0.0:3000/acActivityHistory
+  http://0.0.0.0:3000/alerts
+
+  Home
+  http://0.0.0.0:3000
+
+[0mGET /dashboard [32m200[0m 23.247 ms - 1617[0m
+[0mGET /history/ac-activity?period=daily [33m404[0m 19.558 ms - 2[0m
+[0mGET /history/energy?period=daily [33m404[0m 22.723 ms - 2[0m
+[0mGET /energyHistory [32m200[0m 26.444 ms - -[0m
+[0mGET /acActivityHistory?period=daily [32m200[0m 15.214 ms - 802[0m
+[0mGET /energyHistory?period=daily [32m200[0m 15.636 ms - -[0m
+[0mGET /acActivityHistory?period=daily [36m304[0m 33.446 ms - -[0m
+[0mGET /energyHistory?period=daily [36m304[0m 42.191 ms - -[0m

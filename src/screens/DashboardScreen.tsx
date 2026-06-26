@@ -1,44 +1,106 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  RefreshControl, ScrollView, StyleSheet,
+  Text, TouchableOpacity, View, useWindowDimensions,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Feather';
-import { getDashboard, DashboardData } from '../api/api';
+import {
+  Alert as AlertType,
+  DashboardData,
+  requestDashboard,
+  requestDashboardAlerts,
+  subscribeToConnection,
+  subscribeToDashboard,
+  subscribeToDashboardAlerts,
+} from '../socket/liveCommunication';
 import MiniChart from '../components/MiniChart';
 import colors from '../constants/colors';
 
 const DEFAULT_DATA: DashboardData = {
   systemOnline: false, totalDevices: 0, activeRelays: 0, totalCurrent: 0,
-  voltage: 0, current: 0, power: 0, energy: 0,
-  frequency: 0, powerFactor: 0,
-  voltageHistory: [], powerHistory: [], currentHistory: [],
+  voltage: 0, current: 0, power: 0, energy: 0, frequency: 0, powerFactor: 0,
+  voltageHistory: [], powerHistory: [], energyHistory: [], currentHistory: [],
   lastUpdated: new Date().toISOString(),
 };
 
+function severityColor(s: string) {
+  if (s === 'critical') return colors.destructive;
+  if (s === 'warning') return colors.warning;
+  return colors.primary;
+}
+function severityIcon(s: string) {
+  if (s === 'critical') return 'alert-octagon';
+  if (s === 'warning') return 'alert-triangle';
+  return 'info';
+}
+
 export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation<any>();
+  const { width } = useWindowDimensions();
+
   const [data, setData] = useState<DashboardData>(DEFAULT_DATA);
+  const [alerts, setAlerts] = useState<AlertType[]>([]);
   const [offline, setOffline] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  const load = useCallback(async () => {
-    try {
-      setOffline(false);
-      setData(await getDashboard());
-    } catch {
-      setOffline(true);
-    } finally {
-      setRefreshing(false);
-    }
+  const load = useCallback(() => {
+    requestDashboard();
+    requestDashboardAlerts();
   }, []);
 
-  useEffect(() => { load(); const t = setInterval(load, 5000); return () => clearInterval(t); }, [load]);
+  useEffect(() => {
+    const removeDashboard = subscribeToDashboard(dash => {
+      setData(dash);
+      setOffline(false);
+      setRefreshing(false);
+    });
+    const removeAlerts = subscribeToDashboardAlerts(nextAlerts => {
+      setAlerts(nextAlerts.filter(a => !a.isResolved).slice(0, 3));
+    });
+    const removeConnection = subscribeToConnection(
+      () => {
+        setOffline(false);
+        load();
+      },
+      () => {
+        setOffline(true);
+        setRefreshing(false);
+      },
+    );
 
-  const PARAMS = [
-    { label: 'Voltage',  value: data.voltage,  unit: 'V',   color: colors.warning,     icon: 'zap',              history: data.voltageHistory },
-    { label: 'Power',    value: data.power,     unit: 'W',   color: colors.accent,      icon: 'cpu',              history: data.powerHistory },
-    { label: 'Current',  value: data.current,   unit: 'A',   color: colors.primary,     icon: 'activity',         history: data.currentHistory },
-    { label: 'Energy',   value: data.energy,    unit: 'kWh', color: colors.success,     icon: 'battery-charging', history: [] },
-  ] as const;
+    return () => {
+      removeDashboard();
+      removeAlerts();
+      removeConnection();
+    };
+  }, [load]);
+
+  const updatedTime = new Date(data.lastUpdated).toLocaleTimeString([], {
+    hour: '2-digit', minute: '2-digit',
+  });
+
+  const rawTemperature = (data as any).temperature ?? (data as any).Temperature;
+  const rawHumidity = (data as any).humidity ?? (data as any).Humidity;
+  const temperatureValue = typeof rawTemperature === 'number' ? rawTemperature : Number.parseFloat(String(rawTemperature).replace(/[^0-9.-]/g, ''));
+  const humidityValue = typeof rawHumidity === 'number' ? rawHumidity : Number.parseFloat(String(rawHumidity).replace(/[^0-9.-]/g, ''));
+
+  // 8 parameter cards — 2 cols × 4 rows
+  const paramCards = [
+    { label: 'Voltage', value: data.voltage > 0 ? data.voltage.toFixed(1) : '--', unit: 'V', icon: 'zap', color: colors.primary },
+    { label: 'Current', value: data.current > 0 ? data.current.toFixed(2) : '--', unit: 'A', icon: 'activity', color: colors.primary },
+    { label: 'Power', value: data.power > 0 ? data.power.toFixed(0) : '--', unit: 'W', icon: 'cpu', color: colors.accent },
+    { label: 'Energy', value: data.energy > 0 ? data.energy.toFixed(2) : '--', unit: 'kWh', icon: 'battery-charging', color: colors.success },
+    { label: 'Temperature', value: Number.isFinite(temperatureValue) ? temperatureValue.toFixed(0) : '--', unit: '°C', icon: 'thermometer', color: colors.warning },
+    { label: 'Humidity', value: Number.isFinite(humidityValue) ? humidityValue.toFixed(0) : '--', unit: '%', icon: 'droplet', color: '#38bdf8' },
+    { label: 'Active Relays', value: String(data.activeRelays), unit: '', icon: 'toggle-right', color: colors.success },
+    { label: 'Devices Online', value: String(data.totalDevices), unit: '', icon: 'wifi', color: colors.primary },
+  ];
+
+  const cardW = (width - 32 - 10) / 2;
+  const chartW = (width - 32 - 10) / 2;
 
   return (
     <ScrollView
@@ -46,108 +108,166 @@ export default function DashboardScreen() {
       contentContainerStyle={[styles.content, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 76 }]}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.primary} />}
     >
-      {/* Header */}
+      {/* ── Header ── */}
       <View style={styles.header}>
         <View>
-          <Text style={styles.subtitle}>IoT Control Panel</Text>
           <Text style={styles.title}>Dashboard</Text>
+          <Text style={styles.updatedText}>Updated {updatedTime}</Text>
         </View>
-        {offline ? (
-          <View style={[styles.badge, { backgroundColor: colors.warning + '22' }]}>
-            <Icon name="wifi-off" size={10} color={colors.warning} />
-            <Text style={[styles.badgeText, { color: colors.warning }]}>Offline</Text>
-          </View>
-        ) : (
-          <View style={[styles.badge, { backgroundColor: data.systemOnline ? colors.success + '22' : colors.destructive + '22' }]}>
-            <View style={[styles.dot, { backgroundColor: data.systemOnline ? colors.success : colors.destructive }]} />
-            <Text style={[styles.badgeText, { color: data.systemOnline ? colors.success : colors.destructive }]}>
-              {data.systemOnline ? 'Online' : 'Offline'}
+        <View style={[styles.statusPill, { borderColor: data.systemOnline && !offline ? colors.success + '55' : colors.destructive + '55', backgroundColor: data.systemOnline && !offline ? colors.success + '15' : colors.destructive + '15' }]}>
+          <View style={[styles.statusDot, { backgroundColor: data.systemOnline && !offline ? colors.success : colors.destructive }]} />
+          <Text style={[styles.statusText, { color: data.systemOnline && !offline ? colors.success : colors.destructive }]}>
+            {offline ? 'Offline' : data.systemOnline ? 'Online' : 'Offline'}
+          </Text>
+        </View>
+      </View>
+
+      {/* ── B. Live Parameter Cards 2×4 ── */}
+      <Text style={styles.sectionLabel}>LIVE PARAMETERS</Text>
+      <View style={styles.cardsGrid}>
+        {paramCards.map(c => (
+          <View key={c.label} style={[styles.paramCard, { width: cardW, borderTopColor: c.color }]}>
+            <View style={styles.paramTop}>
+              <View style={[styles.paramIconWrap, { backgroundColor: c.color + '20' }]}>
+                <Icon name={c.icon} size={14} color={c.color} />
+              </View>
+              <Text style={styles.paramLabel}>{c.label}</Text>
+            </View>
+            <Text style={[styles.paramValue, { color: c.color }]}>
+              {c.value}<Text style={[styles.paramUnit, { color: c.color + 'bb' }]}>{c.unit ? ` ${c.unit}` : ''}</Text>
             </Text>
           </View>
-        )}
+        ))}
       </View>
 
-      {/* Summary row */}
-      <View style={styles.summaryRow}>
-        <View style={styles.summaryItem}>
-          <Text style={[styles.summaryValue, { color: colors.primary }]}>{data.totalDevices}</Text>
-          <Text style={styles.summaryLabel}>Devices</Text>
-        </View>
-        <View style={styles.divider} />
-        <View style={styles.summaryItem}>
-          <Text style={[styles.summaryValue, { color: colors.accent }]}>{data.activeRelays}</Text>
-          <Text style={styles.summaryLabel}>Active Relays</Text>
-        </View>
-        <View style={styles.divider} />
-        <View style={styles.summaryItem}>
-          <Text style={[styles.summaryValue, { color: colors.warning }]}>{data.totalCurrent.toFixed(1)}A</Text>
-          <Text style={styles.summaryLabel}>Total Current</Text>
-        </View>
-      </View>
-
-      {/* 4 parameters — full width, one per row */}
-      <Text style={styles.sectionTitle}>ELECTRICAL PARAMETERS</Text>
-      {PARAMS.map(p => (
-        <View key={p.label} style={styles.paramCard}>
-          <View style={styles.paramLeft}>
-            <View style={[styles.paramIcon, { backgroundColor: p.color + '22' }]}>
-              <Icon name={p.icon} size={20} color={p.color} />
-            </View>
-            <View>
-              <Text style={styles.paramLabel}>{p.label}</Text>
-              <Text style={[styles.paramValue, { color: p.color }]}>
-                {p.value.toFixed(p.unit === 'kWh' || p.unit === 'A' ? 2 : p.unit === 'W' ? 0 : 1)}
-                <Text style={styles.paramUnit}> {p.unit}</Text>
-              </Text>
-            </View>
-          </View>
-          {p.history.length > 0 ? (
-            <View style={styles.paramChart}>
-              <MiniChart data={p.history} color={p.color} height={40} />
-            </View>
+      {/* ── C. Graphs Section (side-by-side) ── */}
+      <Text style={styles.sectionLabel}>TREND GRAPHS</Text>
+      <View style={styles.chartsRow}>
+        {/* Power Trend */}
+        <View style={[styles.chartCard, { width: chartW }]}>
+          <Text style={styles.chartTitle}>Power Trend</Text>
+          <Text style={styles.chartSub}>24 Hours</Text>
+            {data.powerHistory.length > 1 ? (
+            <MiniChart data={data.powerHistory} color={colors.accent} height={56} width={chartW - 24} />
           ) : (
-            <View style={styles.paramChart} />
+            <View style={[styles.noChartData, { width: chartW - 24 }]}>
+              <Text style={styles.noChartText}>No data</Text>
+            </View>
           )}
+          <Text style={[styles.chartCurrent, { color: colors.accent }]}>{data.power.toFixed(0)} W</Text>
         </View>
-      ))}
 
-      {/* Offline note */}
-      {offline && (
-        <View style={styles.offlineNote}>
-          <Icon name="wifi-off" size={14} color={colors.warning} />
-          <Text style={styles.offlineText}>No backend connected — set API URL in api.ts to see live data</Text>
+        {/* Energy Consumption */}
+          <View style={[styles.chartCard, { width: chartW }]}>
+          <Text style={styles.chartTitle}>Energy Usage</Text>
+          <Text style={styles.chartSub}>Today</Text>
+            {data.currentHistory.length > 1 ? (
+            <MiniChart data={data.currentHistory} color={colors.success} height={56} width={chartW - 24} />
+          ) : (
+            <View style={[styles.noChartData, { width: chartW - 24 }]}>
+              <Text style={styles.noChartText}>No data</Text>
+            </View>
+          )}
+          <Text style={[styles.chartCurrent, { color: colors.success }]}>{data.energy.toFixed(2)} kWh</Text>
+        </View>
+      </View>
+
+      {/* ── D. Recent Alerts ── */}
+      <View style={styles.alertsHeader}>
+        <Text style={styles.sectionLabel}>RECENT ALERTS</Text>
+        <TouchableOpacity onPress={() => navigation.navigate('AllAlerts')}>
+          <Text style={[styles.viewAllLink, { color: colors.primary }]}>View All</Text>
+        </TouchableOpacity>
+      </View>
+
+      {alerts.length === 0 ? (
+        <View style={styles.noAlerts}>
+          <Icon name="check-circle" size={20} color={colors.success} />
+          <Text style={styles.noAlertsText}>
+            {offline ? 'Connect backend to see alerts' : 'No active alerts — all systems normal'}
+          </Text>
+        </View>
+      ) : (
+        <View style={styles.alertList}>
+          {alerts.map(a => {
+            const c = severityColor(a.severity);
+            return (
+              <View key={a.id} style={[styles.alertRow, { borderLeftColor: c }]}>
+                <Icon name={severityIcon(a.severity)} size={15} color={c} />
+                <View style={styles.flex1}>
+                  <Text style={styles.alertTitle} numberOfLines={1}>{a.title}</Text>
+                  <Text style={styles.alertMeta}>
+                    {a.deviceName ? `${a.deviceName} · ` : ''}
+                    {new Date(a.timestamp).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  </Text>
+                </View>
+                <View style={[styles.severityTag, { backgroundColor: c + '22' }]}>
+                  <Text style={[styles.severityText, { color: c }]}>{a.severity.toUpperCase()}</Text>
+                </View>
+              </View>
+            );
+          })}
         </View>
       )}
+
+      <TouchableOpacity
+        style={styles.viewAllAlertsBtn}
+        onPress={() => navigation.navigate('AllAlerts')}
+        activeOpacity={0.8}
+      >
+        <Icon name="bell" size={14} color={colors.primary} />
+        <Text style={styles.viewAllAlertsBtnText}>View All Alerts</Text>
+      </TouchableOpacity>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   scroll: { flex: 1, backgroundColor: colors.background },
-  content: { paddingHorizontal: 16, gap: 12 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 4 },
-  subtitle: { color: colors.mutedForeground, fontSize: 12 },
-  title: { color: colors.foreground, fontSize: 26, fontWeight: '700' },
-  badge: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20 },
-  dot: { width: 7, height: 7, borderRadius: 4 },
-  badgeText: { fontSize: 12, fontWeight: '600' },
-  summaryRow: { flexDirection: 'row', backgroundColor: colors.card, borderRadius: 14, borderWidth: 1, borderColor: colors.border, padding: 16, alignItems: 'center' },
-  summaryItem: { flex: 1, alignItems: 'center' },
-  summaryValue: { fontSize: 22, fontWeight: '700' },
-  summaryLabel: { fontSize: 11, color: colors.mutedForeground, marginTop: 2 },
-  divider: { width: 1, height: 36, backgroundColor: colors.border },
-  sectionTitle: { color: colors.mutedForeground, fontSize: 11, fontWeight: '600', letterSpacing: 1.2, marginTop: 4 },
-  paramCard: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: colors.card, borderRadius: 14, borderWidth: 1, borderColor: colors.border,
-    padding: 14,
-  },
-  paramLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
-  paramIcon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  paramLabel: { color: colors.mutedForeground, fontSize: 12, marginBottom: 2 },
-  paramValue: { fontSize: 22, fontWeight: '700' },
-  paramUnit: { fontSize: 13, fontWeight: '400' },
-  paramChart: { width: 90, height: 40 },
-  offlineNote: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.warning + '11', borderRadius: 10, padding: 12, borderWidth: 1, borderColor: colors.warning + '33' },
-  offlineText: { flex: 1, color: colors.warning, fontSize: 12 },
+  content: { paddingHorizontal: 16, gap: 10 },
+
+  // Header
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 },
+  title: { color: colors.foreground, fontSize: 22, fontWeight: '800', letterSpacing: -0.3 },
+  updatedText: { color: colors.mutedForeground, fontSize: 11, marginTop: 3 },
+  statusPill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1 },
+  statusDot: { width: 8, height: 8, borderRadius: 4 },
+  statusText: { fontSize: 12, fontWeight: '700' },
+
+  // Section labels
+  sectionLabel: { color: colors.mutedForeground, fontSize: 10, fontWeight: '700', letterSpacing: 1.5 },
+
+  // Parameter cards 2-col grid
+  cardsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  paramCard: { backgroundColor: colors.card, borderRadius: 14, borderWidth: 1, borderColor: colors.border, padding: 13, gap: 8, borderTopWidth: 2 },
+  paramTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  paramIconWrap: { width: 26, height: 26, borderRadius: 7, alignItems: 'center', justifyContent: 'center' },
+  paramLabel: { color: colors.mutedForeground, fontSize: 11, fontWeight: '600', flex: 1 },
+  paramValue: { fontSize: 26, fontWeight: '800', letterSpacing: -0.5 },
+  paramUnit: { fontSize: 13, fontWeight: '600' },
+
+  // Charts row (side by side)
+  chartsRow: { flexDirection: 'row', gap: 10 },
+  chartCard: { backgroundColor: colors.card, borderRadius: 14, borderWidth: 1, borderColor: colors.border, padding: 12, gap: 4, overflow: 'hidden' },
+  chartTitle: { color: colors.foreground, fontSize: 12, fontWeight: '700' },
+  chartSub: { color: colors.mutedForeground, fontSize: 10, marginBottom: 4 },
+  chartCurrent: { fontSize: 14, fontWeight: '800', marginTop: 6 },
+  noChartData: { alignItems: 'center', justifyContent: 'center', backgroundColor: colors.secondary, borderRadius: 8, height: 56 },
+  flex1: { flex: 1 },
+  noChartText: { color: colors.mutedForeground, fontSize: 11 },
+
+  // Alerts
+  alertsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  viewAllLink: { fontSize: 12, fontWeight: '600' },
+  noAlerts: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.success + '11', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: colors.success + '33' },
+  noAlertsText: { flex: 1, color: colors.success, fontSize: 12 },
+  alertList: { gap: 8 },
+  alertRow: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.card, borderRadius: 12, borderWidth: 1, borderColor: colors.border, borderLeftWidth: 3, padding: 12 },
+  alertTitle: { color: colors.foreground, fontSize: 13, fontWeight: '600' },
+  alertMeta: { color: colors.mutedForeground, fontSize: 11, marginTop: 2 },
+  severityTag: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  severityText: { fontSize: 9, fontWeight: '800', letterSpacing: 0.5 },
+
+  viewAllAlertsBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1, borderColor: colors.primary + '55', borderRadius: 14, paddingVertical: 13, backgroundColor: colors.primary + '10' },
+  viewAllAlertsBtnText: { color: colors.primary, fontSize: 14, fontWeight: '700' },
 });

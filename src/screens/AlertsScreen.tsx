@@ -1,16 +1,23 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Feather';
-import { getAlerts, resolveAlert, Alert as AlertType } from '../api/api';
+import {
+  Alert as AlertType,
+  requestAlerts,
+  resolveAlert,
+  subscribeToAlerts,
+  subscribeToConnection,
+} from '../socket/liveCommunication';
 import colors from '../constants/colors';
 
-type Filter = 'all' | 'critical' | 'warning' | 'info';
-const FILTERS: { key: Filter; label: string }[] = [
-  { key: 'all', label: 'All' }, { key: 'critical', label: 'Critical' },
-  { key: 'warning', label: 'Warning' }, { key: 'info', label: 'Info' },
-];
-const TYPE_ICONS: Record<string, string> = { electrical: 'zap', communication: 'wifi', relay: 'toggle-left' };
+const SEVERITY_FILTERS = [
+  { key: 'all', label: 'All' },
+  { key: 'critical', label: 'Critical' },
+  { key: 'warning', label: 'Warning' },
+  { key: 'info', label: 'Info' },
+] as const;
 
 function severityColor(s: string) {
   if (s === 'critical') return colors.destructive;
@@ -18,134 +25,177 @@ function severityColor(s: string) {
   return colors.primary;
 }
 
+function severityIcon(s: string) {
+  if (s === 'critical') return 'alert-octagon';
+  if (s === 'warning') return 'alert-triangle';
+  return 'info';
+}
+
 export default function AlertsScreen() {
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation();
   const [alerts, setAlerts] = useState<AlertType[]>([]);
-  const [unread, setUnread] = useState(0);
-  const [filter, setFilter] = useState<Filter>('all');
-  const [showResolved, setShowResolved] = useState(false);
+  const [filter, setFilter] = useState<'all' | 'critical' | 'warning' | 'info'>('all');
   const [offline, setOffline] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const load = useCallback(async () => {
-    try {
+  const load = useCallback(() => {
+    requestAlerts();
+  }, []);
+
+  useEffect(() => {
+    const removeAlerts = subscribeToAlerts(nextAlerts => {
+      setAlerts(nextAlerts);
       setOffline(false);
-      const params = filter === 'all' ? {} : { severity: filter };
-      const r = await getAlerts(params);
-      setAlerts(r.alerts);
-      setUnread(r.unreadCount);
-    } catch {
-      setOffline(true);
-    }
-  }, [filter]);
+      setRefreshing(false);
+    });
+    const removeConnection = subscribeToConnection(
+      () => {
+        setOffline(false);
+        load();
+      },
+      () => {
+        setOffline(true);
+        setRefreshing(false);
+      },
+    );
+    return () => {
+      removeAlerts();
+      removeConnection();
+    };
+  }, [load]);
 
-  useEffect(() => { load(); const t = setInterval(load, 30000); return () => clearInterval(t); }, [load]);
-
-  const handleResolve = useCallback(async (id: string) => {
-    if (offline) {
-      setAlerts(prev => prev.map(a => a.id === id ? { ...a, isResolved: true } : a));
-      setUnread(u => Math.max(0, u - 1));
-      return;
-    }
-    try {
-      const updated = await resolveAlert(id);
-      setAlerts(prev => prev.map(a => a.id === id ? updated : a));
-      setUnread(u => Math.max(0, u - 1));
-    } catch {}
+  const handleResolve = useCallback((id: string) => {
+    setAlerts(prev => prev.map(a => a.id === id ? { ...a, isResolved: true } : a));
+    if (!offline) resolveAlert(id);
   }, [offline]);
 
-  const displayed = showResolved ? alerts : alerts.filter(a => !a.isResolved);
+  const displayed = alerts.filter(a =>
+    !a.isResolved && (filter === 'all' || a.severity === filter)
+  );
+
+  const critCount = alerts.filter(a => !a.isResolved && a.severity === 'critical').length;
+  const warnCount = alerts.filter(a => !a.isResolved && a.severity === 'warning').length;
 
   return (
     <ScrollView
       style={styles.scroll}
       contentContainerStyle={[styles.content, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 76 }]}
-      refreshControl={<RefreshControl refreshing={false} onRefresh={load} tintColor={colors.primary} />}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.primary} />}
     >
+      {/* Header */}
       <View style={styles.header}>
-        <View>
-          <Text style={styles.subtitle}>System</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+          <Icon name="arrow-left" size={18} color={colors.primary} />
+        </TouchableOpacity>
+        <View style={styles.flex1}>
+          <Text style={styles.subtitle}>System Monitoring</Text>
           <Text style={styles.title}>Alerts</Text>
         </View>
-        <View style={styles.headerRight}>
-          {unread > 0 && (
-            <View style={styles.unreadBadge}><Text style={styles.unreadText}>{unread}</Text></View>
-          )}
-          {offline && (
-            <View style={styles.offlineBadge}>
-              <Icon name="wifi-off" size={12} color={colors.warning} />
-              <Text style={styles.offlineText}>Offline</Text>
-            </View>
-          )}
-        </View>
+        {offline && (
+          <View style={styles.offlinePill}>
+            <Icon name="wifi-off" size={11} color={colors.warning} />
+            <Text style={styles.offlineText}>Offline</Text>
+          </View>
+        )}
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
-        {FILTERS.map(f => (
-          <TouchableOpacity key={f.key} onPress={() => setFilter(f.key)}
-            style={[styles.filterBtn, { backgroundColor: filter === f.key ? colors.primary : colors.card, borderColor: filter === f.key ? colors.primary : colors.border }]}>
-            <Text style={[styles.filterText, { color: filter === f.key ? colors.background : colors.mutedForeground }]}>{f.label}</Text>
-          </TouchableOpacity>
-        ))}
-        <TouchableOpacity onPress={() => setShowResolved(!showResolved)}
-          style={[styles.filterBtn, { backgroundColor: showResolved ? colors.success + '22' : colors.card, borderColor: showResolved ? colors.success : colors.border }]}>
-          <Icon name="check-circle" size={12} color={showResolved ? colors.success : colors.mutedForeground} />
-          <Text style={[styles.filterText, { color: showResolved ? colors.success : colors.mutedForeground }]}>Resolved</Text>
-        </TouchableOpacity>
-      </ScrollView>
-
-      {displayed.length === 0 && (
-        <View style={styles.empty}>
-          <Icon name="check-circle" size={40} color={offline ? colors.warning : colors.success} />
-          <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-            {offline ? 'No Backend Connected' : 'All Clear'}
-          </Text>
-          <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-            {offline ? 'Set your API URL in api.ts to see live alerts' : 'No alerts to display'}
-          </Text>
+      {/* Summary Row */}
+      {!offline && (
+        <View style={styles.summaryRow}>
+          {[
+            { label: 'Critical', val: critCount, color: colors.destructive, icon: 'alert-octagon' },
+            { label: 'Warnings', val: warnCount, color: colors.warning, icon: 'alert-triangle' },
+            { label: 'Total Active', val: alerts.filter(a => !a.isResolved).length, color: colors.primary, icon: 'bell' },
+          ].map((s, i) => (
+            <React.Fragment key={s.label}>
+              {i > 0 && <View style={styles.divider} />}
+              <View style={styles.summaryItem}>
+                <Icon name={s.icon} size={15} color={s.color} />
+                <Text style={[styles.summaryVal, { color: s.color }]}>{s.val}</Text>
+                <Text style={styles.summaryLabel}>{s.label}</Text>
+              </View>
+            </React.Fragment>
+          ))}
         </View>
       )}
 
-      <View style={styles.list}>
-        {displayed.map(a => {
-          const c = severityColor(a.severity);
+      {/* Severity Filter */}
+      <View style={styles.filterRow}>
+        {SEVERITY_FILTERS.map(f => {
+          const active = filter === f.key;
+          const fc = f.key === 'critical' ? colors.destructive : f.key === 'warning' ? colors.warning : f.key === 'info' ? colors.primary : colors.foreground;
           return (
-            <View key={a.id} style={[styles.alertCard, { borderColor: a.isResolved ? colors.border : c + '44', borderLeftColor: a.isResolved ? colors.border : c, opacity: a.isResolved ? 0.6 : 1 }]}>
-              <View style={styles.alertHeader}>
-                <View style={[styles.alertIcon, { backgroundColor: c + '22' }]}>
-                  <Icon name={TYPE_ICONS[a.type] ?? 'alert-triangle'} size={16} color={c} />
-                </View>
-                <View style={{ flex: 1, gap: 3 }}>
-                  <View style={styles.titleRow}>
-                    <Text style={styles.alertTitle} numberOfLines={1}>{a.title}</Text>
-                    <View style={[styles.severityBadge, { backgroundColor: c + '22' }]}>
-                      <Text style={[styles.severityText, { color: c }]}>{a.severity.toUpperCase()}</Text>
-                    </View>
-                  </View>
-                  <Text style={styles.alertMeta}>{a.deviceName} · {new Date(a.timestamp).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</Text>
-                </View>
-              </View>
-              <Text style={styles.alertDesc}>{a.description}</Text>
-              <View style={[styles.solutionBox, { backgroundColor: c + '0f', borderColor: c + '33' }]}>
-                <Icon name="info" size={12} color={c} />
-                <Text style={styles.solutionText}>{a.suggestedSolution}</Text>
-              </View>
-              {!a.isResolved && (
-                <TouchableOpacity onPress={() => handleResolve(a.id)}
-                  style={[styles.resolveBtn, { backgroundColor: colors.success + '22', borderColor: colors.success + '44' }]}>
-                  <Icon name="check" size={14} color={colors.success} />
-                  <Text style={[styles.resolveBtnText, { color: colors.success }]}>Mark Resolved</Text>
-                </TouchableOpacity>
-              )}
-              {a.isResolved && (
-                <View style={[styles.resolvedTag, { backgroundColor: colors.success + '22' }]}>
-                  <Icon name="check-circle" size={12} color={colors.success} />
-                  <Text style={[styles.resolvedText, { color: colors.success }]}>Resolved</Text>
-                </View>
-              )}
-            </View>
+            <TouchableOpacity key={f.key} onPress={() => setFilter(f.key)} style={filterButtonStyle(active, f.key === 'all' ? colors.primary : fc)}>
+              <Text style={[styles.filterText, { color: active ? (f.key === 'all' ? colors.background : '#fff') : colors.mutedForeground }]}>
+                {f.label}
+              </Text>
+            </TouchableOpacity>
           );
         })}
       </View>
+
+      {/* Alert List */}
+      {offline ? (
+        <View style={styles.emptyCard}>
+          <Icon name="wifi-off" size={36} color={colors.warning} />
+          <Text style={styles.emptyTitle}>Backend not connected</Text>
+          <Text style={styles.emptyDesc}>Set your API URL in api.ts to see live alerts</Text>
+        </View>
+      ) : displayed.length === 0 ? (
+        <View style={styles.emptyCard}>
+          <Icon name="check-circle" size={36} color={colors.success} />
+          <Text style={styles.emptyTitle}>No {filter === 'all' ? '' : filter} alerts</Text>
+          <Text style={styles.emptyDesc}>All systems are running normally</Text>
+        </View>
+      ) : (
+        <View style={styles.alertList}>
+          {displayed.map(a => {
+            const c = severityColor(a.severity);
+            return (
+              <View key={a.id} style={[styles.alertCard, { borderLeftColor: c }]}>
+                <View style={styles.alertTop}>
+                  <View style={[styles.alertIcon, { backgroundColor: c + '22' }]}>
+                    <Icon name={severityIcon(a.severity)} size={16} color={c} />
+                  </View>
+                  <View style={styles.flex1}>
+                    <Text style={styles.alertTitle}>{a.title}</Text>
+                    {a.deviceName && <Text style={styles.alertDevice}>{a.deviceName}</Text>}
+                  </View>
+                  <View style={styles.alertRight}>
+                    <View style={[styles.severityPill, { backgroundColor: c + '22' }]}>
+                      <Text style={[styles.severityText, { color: c }]}>{a.severity.toUpperCase()}</Text>
+                    </View>
+                    <Text style={styles.alertTime}>
+                      {new Date(a.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </Text>
+                  </View>
+                </View>
+
+                {a.description && (
+                  <Text style={styles.alertDesc}>{a.description}</Text>
+                )}
+
+                {a.suggestedSolution && (
+                  <View style={styles.solutionBox}>
+                    <Icon name="tool" size={12} color={colors.accent} />
+                    <Text style={styles.solutionText}>{a.suggestedSolution}</Text>
+                  </View>
+                )}
+
+                <TouchableOpacity
+                  style={styles.resolveBtn}
+                  onPress={() => handleResolve(a.id)}
+                  activeOpacity={0.7}
+                >
+                  <Icon name="check" size={13} color={colors.success} />
+                  <Text style={styles.resolveText}>Mark Resolved</Text>
+                </TouchableOpacity>
+              </View>
+            );
+          })}
+        </View>
+      )}
     </ScrollView>
   );
 }
@@ -153,34 +203,45 @@ export default function AlertsScreen() {
 const styles = StyleSheet.create({
   scroll: { flex: 1, backgroundColor: colors.background },
   content: { paddingHorizontal: 16, gap: 12 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 2 },
+  backBtn: { width: 38, height: 38, borderRadius: 10, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
   subtitle: { color: colors.mutedForeground, fontSize: 12 },
-  title: { color: colors.foreground, fontSize: 26, fontWeight: '700' },
-  offlineBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.warning + '22', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20 },
-  offlineText: { color: colors.warning, fontSize: 11, fontWeight: '600' },
-  unreadBadge: { backgroundColor: colors.destructive, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, minWidth: 28, alignItems: 'center' },
-  unreadText: { color: '#fff', fontSize: 13, fontWeight: '700' },
-  filterRow: { gap: 8, paddingRight: 16 },
-  filterBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, borderWidth: 1 },
+  title: { color: colors.foreground, fontSize: 26, fontWeight: '800', letterSpacing: -0.5 },
+  offlinePill: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: colors.warning + '22', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1, borderColor: colors.warning + '44' },
+  offlineText: { color: colors.warning, fontSize: 11, fontWeight: '700' },
+  summaryRow: { flexDirection: 'row', backgroundColor: colors.card, borderRadius: 16, borderWidth: 1, borderColor: colors.border, padding: 16, alignItems: 'center' },
+  summaryItem: { flex: 1, alignItems: 'center', gap: 4 },
+  summaryVal: { fontSize: 22, fontWeight: '800' },
+  summaryLabel: { fontSize: 11, color: colors.mutedForeground },
+  divider: { width: 1, height: 40, backgroundColor: colors.border },
+  filterRow: { flexDirection: 'row', gap: 8 },
+  filterBtn: { flex: 1, paddingVertical: 9, borderRadius: 22, borderWidth: 1, alignItems: 'center' },
   filterText: { fontSize: 12, fontWeight: '600' },
-  empty: { alignItems: 'center', gap: 10, paddingVertical: 60 },
-  emptyTitle: { fontSize: 18, fontWeight: '600' },
-  emptyText: { fontSize: 14, textAlign: 'center', paddingHorizontal: 24 },
-  list: { gap: 12 },
-  alertCard: { backgroundColor: colors.card, borderRadius: 14, borderWidth: 1, borderLeftWidth: 4, padding: 14, gap: 10 },
-  alertHeader: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
-  alertIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginTop: 2 },
-  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  alertTitle: { flex: 1, color: colors.foreground, fontSize: 14, fontWeight: '600' },
-  severityBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
-  severityText: { fontSize: 9, fontWeight: '700', letterSpacing: 0.5 },
-  alertMeta: { color: colors.mutedForeground, fontSize: 11 },
-  alertDesc: { color: colors.mutedForeground, fontSize: 13, lineHeight: 19 },
-  solutionBox: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, padding: 10, borderRadius: 8, borderWidth: 1 },
-  solutionText: { flex: 1, color: colors.mutedForeground, fontSize: 12, lineHeight: 17 },
-  resolveBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1, alignSelf: 'flex-start' },
-  resolveBtnText: { fontSize: 13, fontWeight: '600' },
-  resolvedTag: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, alignSelf: 'flex-start' },
-  resolvedText: { fontSize: 12, fontWeight: '500' },
+  emptyCard: { alignItems: 'center', gap: 10, paddingVertical: 52, backgroundColor: colors.card, borderRadius: 16, borderWidth: 1, borderColor: colors.border },
+  emptyTitle: { color: colors.foreground, fontSize: 16, fontWeight: '600' },
+  emptyDesc: { color: colors.mutedForeground, fontSize: 13, textAlign: 'center', paddingHorizontal: 24 },
+  alertList: { gap: 10 },
+  alertCard: { backgroundColor: colors.card, borderRadius: 14, borderWidth: 1, borderColor: colors.border, borderLeftWidth: 3, padding: 14, gap: 10 },
+  alertTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  alertIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginTop: 1 },
+  alertTitle: { color: colors.foreground, fontSize: 14, fontWeight: '700', lineHeight: 20 },
+  alertDevice: { color: colors.mutedForeground, fontSize: 12, marginTop: 2 },
+  alertRight: { alignItems: 'flex-end', gap: 4 },
+  severityPill: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  severityText: { fontSize: 9, fontWeight: '800', letterSpacing: 0.5 },
+  alertTime: { color: colors.mutedForeground, fontSize: 11 },
+  alertDesc: { color: colors.mutedForeground, fontSize: 12, lineHeight: 18 },
+  solutionBox: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, backgroundColor: colors.accent + '11', borderRadius: 8, padding: 10 },
+  solutionText: { flex: 1, color: colors.accent, fontSize: 12 },
+  resolveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: colors.success + '44', backgroundColor: colors.success + '11' },
+  resolveText: { color: colors.success, fontSize: 13, fontWeight: '600' },
+  flex1: { flex: 1 },
 });
+
+const filterButtonStyle = (active: boolean, activeColor: string) => [
+  styles.filterBtn,
+  {
+    backgroundColor: active ? activeColor : 'transparent',
+    borderColor: active ? activeColor : colors.border,
+  },
+];

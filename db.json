@@ -1,19 +1,48 @@
 {
   "dashboard": {
     "id": 1,
-    "voltage": 230,
-    "current": 5.2,
-    "power": 1196,
-    "energy": 15.8,
+    "voltage": 230.4,
+    "current": 5.18,
+    "power": 1192,
+    "energy": 15.84,
+    "frequency": 50,
+    "powerFactor": 0.98,
+    "humidity": 20,
+    "temperature": 23,
+    "voltageHistory": [
+      { "timestamp": "2026-06-12T09:00:00Z", "value": 229.1 },
+      { "timestamp": "2026-06-12T10:00:00Z", "value": 228.4 },
+      { "timestamp": "2026-06-12T11:00:00Z", "value": 230.0 },
+      { "timestamp": "2026-06-12T12:00:00Z", "value": 230.8 }
+    ],
+    "powerHistory": [
+      { "timestamp": "2026-06-12T09:00:00Z", "value": 1100 },
+      { "timestamp": "2026-06-12T10:00:00Z", "value": 1117 },
+      { "timestamp": "2026-06-12T11:00:00Z", "value": 1196 },
+      { "timestamp": "2026-06-12T12:00:00Z", "value": 1210 }
+    ],
+    "energyHistory": [
+      { "timestamp": "2026-06-12T09:00:00Z", "value": 13.95 },
+      { "timestamp": "2026-06-12T10:00:00Z", "value": 14.5 },
+      { "timestamp": "2026-06-12T11:00:00Z", "value": 15.2 },
+      { "timestamp": "2026-06-12T12:00:00Z", "value": 15.84 }
+    ],
+    "currentHistory": [
+      { "timestamp": "2026-06-12T09:00:00Z", "value": 4.8 },
+      { "timestamp": "2026-06-12T10:00:00Z", "value": 4.9 },
+      { "timestamp": "2026-06-12T11:00:00Z", "value": 5.2 },
+      { "timestamp": "2026-06-12T12:00:00Z", "value": 5.3 }
+    ],
     "totalDevices": 3,
     "activeRelays": 4,
-    "totalCurrent": 3.7,
+    "totalCurrent": 3.68,
     "systemOnline": true,
     "lastUpdated": "2026-06-12T14:30:00Z"
   },
 
   "mainBoard": {
     "masterLockEnabled": false,
+    "shutdownEnabled": false,
     "totalCurrent": 2.4,
     "relays": [
       {
@@ -51,6 +80,20 @@
     ]
   },
 
+  "main-board": {
+    "masterLockEnabled": false,
+    "shutdownEnabled": false,
+    "totalCurrent": 2.4,
+    "relays": [
+      { "id": "1", "name": "Relay 1", "number": 1, "isOn": true, "current": 0.5, "status": "normal" },
+      { "id": "2", "name": "Relay 2", "number": 2, "isOn": true, "current": 0.8, "status": "normal" },
+      { "id": "3", "name": "Relay 3", "number": 3, "isOn": false, "current": 0, "status": "normal" },
+      { "id": "4", "name": "Relay 4", "number": 4, "isOn": true, "current": 1.1, "status": "normal" },
+      { "id": "5", "name": "Relay 5", "number": 5, "isOn": false, "current": 0, "status": "normal" }
+      
+    ]
+  },
+
   "digitalBoard": {
     "relays": [
       {
@@ -60,31 +103,13 @@
         "current": 0.4,
         "power": 92,
         "status": "normal"
-      },
-      {
-        "id": "2",
-        "name": "TV",
-        "isOn": false,
-        "current": 0,
-        "power": 0,
-        "status": "normal"
-      },
-      {
-        "id": "3",
-        "name": "Exhaust Fan",
-        "isOn": true,
-        "current": 0.3,
-        "power": 65,
-        "status": "normal"
-      },
-      {
-        "id": "4",
-        "name": "Water Heater",
-        "isOn": false,
-        "current": 0,
-        "power": 0,
-        "status": "normal"
       }
+    ]
+  },
+
+  "digital-board": {
+    "relays": [
+      { "id": "1", "name": "Room Light", "isOn": true, "current": 0.4, "power": 92, "status": "normal" }
     ]
   },
 
@@ -98,11 +123,25 @@
     "irBlasterAvailable": true
   },
 
+  "mqtt": {
+    "settings": {
+      "enabled": true,
+      "broker": "broker.hivemq.com",
+      "port": 1883,
+      "clientId": "SmartNest_001",
+      "username": "",
+      "password": "",
+      "baseTopic": "smartnest",
+      "keepalive": 60
+    }
+  },
+
   "devices": [
     {
       "id": "1",
       "name": "ESP32 Main Board",
       "deviceId": "MB001",
+      "type": "main-board",
       "ipAddress": "192.168.1.101",
       "macAddress": "AA:BB:CC:11:22:33",
       "isOnline": true,
@@ -113,6 +152,7 @@
       "id": "2",
       "name": "Digital Board",
       "deviceId": "DB001",
+      "type": "digital-board",
       "ipAddress": "192.168.1.102",
       "macAddress": "AA:BB:CC:44:55:66",
       "isOnline": true,
@@ -123,6 +163,7 @@
       "id": "3",
       "name": "AC Controller",
       "deviceId": "AC001",
+      "type": "ac-controller",
       "ipAddress": "192.168.1.103",
       "macAddress": "AA:BB:CC:77:88:99",
       "isOnline": true,
@@ -135,11 +176,43 @@
     "electricalRecords": [
       {
         "id": "1",
+        "timestamp": "2026-06-12T09:00:00Z",
+        "voltage": 229.1,
+        "current": 4.8,
+        "power": 1100,
+        "energy": 13.95,
+        "frequency": 50,
+        "powerFactor": 0.97
+      },
+      {
+        "id": "2",
         "timestamp": "2026-06-12T10:00:00Z",
-        "voltage": 228,
+        "voltage": 228.4,
         "current": 4.9,
         "power": 1117,
-        "energy": 14.5
+        "energy": 14.5,
+        "frequency": 50,
+        "powerFactor": 0.97
+      },
+      {
+        "id": "3",
+        "timestamp": "2026-06-12T11:00:00Z",
+        "voltage": 230.0,
+        "current": 5.2,
+        "power": 1196,
+        "energy": 15.2,
+        "frequency": 50,
+        "powerFactor": 0.98
+      },
+      {
+        "id": "4",
+        "timestamp": "2026-06-12T12:00:00Z",
+        "voltage": 230.8,
+        "current": 5.3,
+        "power": 1210,
+        "energy": 15.84,
+        "frequency": 50,
+        "powerFactor": 0.98
       }
     ],
 
@@ -148,7 +221,15 @@
         "id": "1",
         "relayName": "Fan",
         "action": "on",
+        "userAction": "app",
         "timestamp": "2026-06-12T09:15:00Z"
+      },
+      {
+        "id": "2",
+        "relayName": "Light",
+        "action": "off",
+        "userAction": "automation",
+        "timestamp": "2026-06-12T10:10:00Z"
       }
     ],
 
@@ -159,7 +240,59 @@
         "oldValue": "26",
         "newValue": "24",
         "timestamp": "2026-06-12T11:00:00Z"
+      },
+      {
+        "id": "2",
+        "action": "power_toggle",
+        "oldValue": "off",
+        "newValue": "on",
+        "timestamp": "2026-06-12T11:15:00Z"
       }
+    ],
+
+    "powerTrend": [
+      { "timestamp": "2026-06-12T09:00:00Z", "value": 1100 },
+      { "timestamp": "2026-06-12T10:00:00Z", "value": 1117 },
+      { "timestamp": "2026-06-12T11:00:00Z", "value": 1196 },
+      { "timestamp": "2026-06-12T12:00:00Z", "value": 1210 }
+    ],
+
+    "energyTrend": [
+      { "timestamp": "2026-06-12T09:00:00Z", "value": 13.95 },
+      { "timestamp": "2026-06-12T10:00:00Z", "value": 14.5 },
+      { "timestamp": "2026-06-12T11:00:00Z", "value": 15.2 },
+      { "timestamp": "2026-06-12T12:00:00Z", "value": 15.84 }
+    ]
+  },
+
+  "energyHistory": {
+    "electricalRecords": [
+      { "id": "1", "timestamp": "2026-06-12T09:00:00Z", "voltage": 229.1, "current": 4.8, "power": 1100, "energy": 13.95, "frequency": 50, "powerFactor": 0.97 },
+      { "id": "2", "timestamp": "2026-06-12T10:00:00Z", "voltage": 228.4, "current": 4.9, "power": 1117, "energy": 14.5, "frequency": 50, "powerFactor": 0.97 },
+      { "id": "3", "timestamp": "2026-06-12T11:00:00Z", "voltage": 230.0, "current": 5.2, "power": 1196, "energy": 15.2, "frequency": 50, "powerFactor": 0.98 },
+      { "id": "4", "timestamp": "2026-06-12T12:00:00Z", "voltage": 230.8, "current": 5.3, "power": 1210, "energy": 15.84, "frequency": 50, "powerFactor": 0.98 }
+    ],
+    "powerTrend": [
+      { "timestamp": "2026-06-12T09:00:00Z", "value": 1100 },
+      { "timestamp": "2026-06-12T10:00:00Z", "value": 1117 },
+      { "timestamp": "2026-06-12T11:00:00Z", "value": 1196 },
+      { "timestamp": "2026-06-12T12:00:00Z", "value": 1210 }
+    ],
+    "energyTrend": [
+      { "timestamp": "2026-06-12T09:00:00Z", "value": 13.95 },
+      { "timestamp": "2026-06-12T10:00:00Z", "value": 14.5 },
+      { "timestamp": "2026-06-12T11:00:00Z", "value": 15.2 },
+      { "timestamp": "2026-06-12T12:00:00Z", "value": 15.84 }
+    ]
+  },
+
+  "acActivityHistory": {
+    "acRecords": [
+      { "id": "1", "action": "temperature_change", "oldValue": "26", "newValue": "24", "timestamp": "2026-06-12T11:00:00Z" },
+      { "id": "2", "action": "power_toggle", "oldValue": "off", "newValue": "on", "timestamp": "2026-06-12T11:15:00Z" },
+      { "id": "3", "action": "fan_speed_change", "oldValue": "low", "newValue": "medium", "timestamp": "2026-06-12T11:20:00Z" },
+      { "id": "4", "action": "mode_change", "oldValue": "fan", "newValue": "cool", "timestamp": "2026-06-12T11:25:00Z" },
+      { "id": "5", "action": "swing_toggle", "oldValue": "off", "newValue": "on", "timestamp": "2026-06-12T11:30:00Z" }
     ]
   },
 
@@ -167,10 +300,12 @@
     {
       "id": "1",
       "type": "electrical",
+      "code": "OVERCURRENT",
       "title": "High Current Warning",
-      "description": "Current exceeded safe limit.",
+      "description": "Current exceeded safe limit on the main board.",
       "severity": "warning",
-      "suggestedSolution": "Check connected appliances.",
+      "suggestedSolution": "Check connected appliances and reduce active load.",
+      "deviceName": "ESP32 Main Board",
       "timestamp": "2026-06-12T13:00:00Z",
       "isResolved": false
     },
@@ -178,12 +313,27 @@
     {
       "id": "2",
       "type": "communication",
+      "code": "DEVICE_OFFLINE",
       "title": "Device Offline",
-      "description": "Digital Board disconnected.",
+      "description": "Digital Board disconnected from the network.",
       "severity": "critical",
-      "suggestedSolution": "Check WiFi connection.",
+      "suggestedSolution": "Check WiFi connection and reboot the board if needed.",
+      "deviceName": "Digital Board",
       "timestamp": "2026-06-12T12:00:00Z",
       "isResolved": true
+    },
+
+    {
+      "id": "3",
+      "type": "relay",
+      "code": "RELAY_STUCK",
+      "title": "Relay Response Delay",
+      "description": "Relay 4 responded slower than expected.",
+      "severity": "info",
+      "suggestedSolution": "Monitor the relay state and inspect the wiring if it repeats.",
+      "deviceName": "Main Board Relay 4",
+      "timestamp": "2026-06-12T14:05:00Z",
+      "isResolved": false
     }
   ]
 }
