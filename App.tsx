@@ -5,7 +5,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
 
-import AccountScreen from './src/AccountScreen';
+import AccountScreen from './src/screens/AccountScreen';
 import AlertsScreen from './src/screens/AlertsScreen';
 import DashboardScreen from './src/screens/DashboardScreen';
 import DevicesScreen from './src/screens/DevicesScreen';
