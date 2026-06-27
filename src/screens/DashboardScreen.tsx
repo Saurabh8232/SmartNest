@@ -15,6 +15,8 @@ import {
   subscribeToDashboard,
   subscribeToDashboardAlerts,
 } from '../socket/liveCommunication';
+import { TimeSeriesPoint } from '../types/communication';
+import { REST_BASE_URL } from '../config/communication';
 import MiniChart from '../components/MiniChart';
 import colors from '../constants/colors';
 
@@ -45,11 +47,25 @@ export default function DashboardScreen() {
   const [alerts, setAlerts] = useState<AlertType[]>([]);
   const [offline, setOffline] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [powerHistory, setPowerHistory] = useState<TimeSeriesPoint[]>([]);
+  const [currentHistory, setCurrentHistory] = useState<TimeSeriesPoint[]>([]);
+
+  const fetchTrends = useCallback(async () => {
+    try {
+      const res = await fetch(`${REST_BASE_URL}/dashboard`);
+      if (!res.ok) return;
+      const json = await res.json();
+      if (Array.isArray(json.powerHistory)) setPowerHistory(json.powerHistory);
+      if (Array.isArray(json.currentHistory)) setCurrentHistory(json.currentHistory);
+    } catch {
+    }
+  }, []);
 
   const load = useCallback(() => {
     requestDashboard();
     requestDashboardAlerts();
-  }, []);
+    fetchTrends();
+  }, [fetchTrends]);
 
   useEffect(() => {
     const removeDashboard = subscribeToDashboard(dash => {
@@ -87,7 +103,6 @@ export default function DashboardScreen() {
   const temperatureValue = typeof rawTemperature === 'number' ? rawTemperature : Number.parseFloat(String(rawTemperature).replace(/[^0-9.-]/g, ''));
   const humidityValue = typeof rawHumidity === 'number' ? rawHumidity : Number.parseFloat(String(rawHumidity).replace(/[^0-9.-]/g, ''));
 
-  // 8 parameter cards — 2 cols × 4 rows
   const paramCards = [
     { label: 'Voltage', value: data.voltage > 0 ? data.voltage.toFixed(1) : '--', unit: 'V', icon: 'zap', color: colors.primary },
     { label: 'Current', value: data.current > 0 ? data.current.toFixed(2) : '--', unit: 'A', icon: 'activity', color: colors.primary },
@@ -108,7 +123,7 @@ export default function DashboardScreen() {
       contentContainerStyle={[styles.content, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 76 }]}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.primary} />}
     >
-      {/* ── Header ── */}
+      {/* Header */}
       <View style={styles.header}>
         <View>
           <Text style={styles.title}>Dashboard</Text>
@@ -122,7 +137,7 @@ export default function DashboardScreen() {
         </View>
       </View>
 
-      {/* ── B. Live Parameter Cards 2×4 ── */}
+      {/* Live Parameter Cards 2×4 */}
       <Text style={styles.sectionLabel}>LIVE PARAMETERS</Text>
       <View style={styles.cardsGrid}>
         {paramCards.map(c => (
@@ -140,15 +155,14 @@ export default function DashboardScreen() {
         ))}
       </View>
 
-      {/* ── C. Graphs Section (side-by-side) ── */}
+      {/* Trend Graphs side-by-side */}
       <Text style={styles.sectionLabel}>TREND GRAPHS</Text>
       <View style={styles.chartsRow}>
-        {/* Power Trend */}
         <View style={[styles.chartCard, { width: chartW }]}>
           <Text style={styles.chartTitle}>Power Trend</Text>
           <Text style={styles.chartSub}>24 Hours</Text>
-            {data.powerHistory.length > 1 ? (
-            <MiniChart data={data.powerHistory} color={colors.accent} height={56} width={chartW - 24} />
+          {powerHistory.length > 1 ? (
+            <MiniChart data={powerHistory} color={colors.accent} height={56} width={chartW - 24} />
           ) : (
             <View style={[styles.noChartData, { width: chartW - 24 }]}>
               <Text style={styles.noChartText}>No data</Text>
@@ -157,12 +171,11 @@ export default function DashboardScreen() {
           <Text style={[styles.chartCurrent, { color: colors.accent }]}>{data.power.toFixed(0)} W</Text>
         </View>
 
-        {/* Energy Consumption */}
-          <View style={[styles.chartCard, { width: chartW }]}>
+        <View style={[styles.chartCard, { width: chartW }]}>
           <Text style={styles.chartTitle}>Energy Usage</Text>
           <Text style={styles.chartSub}>Today</Text>
-            {data.currentHistory.length > 1 ? (
-            <MiniChart data={data.currentHistory} color={colors.success} height={56} width={chartW - 24} />
+          {currentHistory.length > 1 ? (
+            <MiniChart data={currentHistory} color={colors.success} height={56} width={chartW - 24} />
           ) : (
             <View style={[styles.noChartData, { width: chartW - 24 }]}>
               <Text style={styles.noChartText}>No data</Text>
@@ -172,7 +185,7 @@ export default function DashboardScreen() {
         </View>
       </View>
 
-      {/* ── D. Recent Alerts ── */}
+      {/* Recent Alerts */}
       <View style={styles.alertsHeader}>
         <Text style={styles.sectionLabel}>RECENT ALERTS</Text>
         <TouchableOpacity onPress={() => navigation.navigate('AllAlerts')}>
@@ -225,19 +238,13 @@ export default function DashboardScreen() {
 const styles = StyleSheet.create({
   scroll: { flex: 1, backgroundColor: colors.background },
   content: { paddingHorizontal: 16, gap: 10 },
-
-  // Header
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 },
   title: { color: colors.foreground, fontSize: 22, fontWeight: '800', letterSpacing: -0.3 },
   updatedText: { color: colors.mutedForeground, fontSize: 11, marginTop: 3 },
   statusPill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1 },
   statusDot: { width: 8, height: 8, borderRadius: 4 },
   statusText: { fontSize: 12, fontWeight: '700' },
-
-  // Section labels
   sectionLabel: { color: colors.mutedForeground, fontSize: 10, fontWeight: '700', letterSpacing: 1.5 },
-
-  // Parameter cards 2-col grid
   cardsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   paramCard: { backgroundColor: colors.card, borderRadius: 14, borderWidth: 1, borderColor: colors.border, padding: 13, gap: 8, borderTopWidth: 2 },
   paramTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
@@ -245,18 +252,14 @@ const styles = StyleSheet.create({
   paramLabel: { color: colors.mutedForeground, fontSize: 11, fontWeight: '600', flex: 1 },
   paramValue: { fontSize: 26, fontWeight: '800', letterSpacing: -0.5 },
   paramUnit: { fontSize: 13, fontWeight: '600' },
-
-  // Charts row (side by side)
   chartsRow: { flexDirection: 'row', gap: 10 },
   chartCard: { backgroundColor: colors.card, borderRadius: 14, borderWidth: 1, borderColor: colors.border, padding: 12, gap: 4, overflow: 'hidden' },
   chartTitle: { color: colors.foreground, fontSize: 12, fontWeight: '700' },
   chartSub: { color: colors.mutedForeground, fontSize: 10, marginBottom: 4 },
   chartCurrent: { fontSize: 14, fontWeight: '800', marginTop: 6 },
   noChartData: { alignItems: 'center', justifyContent: 'center', backgroundColor: colors.secondary, borderRadius: 8, height: 56 },
-  flex1: { flex: 1 },
   noChartText: { color: colors.mutedForeground, fontSize: 11 },
-
-  // Alerts
+  flex1: { flex: 1 },
   alertsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   viewAllLink: { fontSize: 12, fontWeight: '600' },
   noAlerts: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.success + '11', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: colors.success + '33' },
@@ -267,7 +270,6 @@ const styles = StyleSheet.create({
   alertMeta: { color: colors.mutedForeground, fontSize: 11, marginTop: 2 },
   severityTag: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
   severityText: { fontSize: 9, fontWeight: '800', letterSpacing: 0.5 },
-
   viewAllAlertsBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1, borderColor: colors.primary + '55', borderRadius: 14, paddingVertical: 13, backgroundColor: colors.primary + '10' },
   viewAllAlertsBtnText: { color: colors.primary, fontSize: 14, fontWeight: '700' },
 });
