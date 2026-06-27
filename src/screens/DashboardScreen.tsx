@@ -67,6 +67,11 @@ export default function DashboardScreen() {
     fetchTrends();
   }, [fetchTrends]);
 
+  // ← NEW: fetch graph data on mount, no socket needed
+  useEffect(() => {
+    fetchTrends();
+  }, [fetchTrends]);
+
   useEffect(() => {
     const removeDashboard = subscribeToDashboard(dash => {
       setData(dash);
@@ -123,7 +128,6 @@ export default function DashboardScreen() {
       contentContainerStyle={[styles.content, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 76 }]}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.primary} />}
     >
-      {/* Header */}
       <View style={styles.header}>
         <View>
           <Text style={styles.title}>Dashboard</Text>
@@ -137,7 +141,6 @@ export default function DashboardScreen() {
         </View>
       </View>
 
-      {/* Live Parameter Cards 2×4 */}
       <Text style={styles.sectionLabel}>LIVE PARAMETERS</Text>
       <View style={styles.cardsGrid}>
         {paramCards.map(c => (
@@ -155,7 +158,6 @@ export default function DashboardScreen() {
         ))}
       </View>
 
-      {/* Trend Graphs side-by-side */}
       <Text style={styles.sectionLabel}>TREND GRAPHS</Text>
       <View style={styles.chartsRow}>
         <View style={[styles.chartCard, { width: chartW }]}>
@@ -185,7 +187,6 @@ export default function DashboardScreen() {
         </View>
       </View>
 
-      {/* Recent Alerts */}
       <View style={styles.alertsHeader}>
         <Text style={styles.sectionLabel}>RECENT ALERTS</Text>
         <TouchableOpacity onPress={() => navigation.navigate('AllAlerts')}>
