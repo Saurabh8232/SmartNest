@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
 // MQTT API calls disabled while MQTT UI is commented out
 // MQTT settings communication can be added as a dedicated API module when re-enabled.
+import { useAuth } from '../authentication/AuthContext';
 import colors from '../constants/colors';
 
 // interface MqttForm {
