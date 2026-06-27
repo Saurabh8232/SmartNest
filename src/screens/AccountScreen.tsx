@@ -215,7 +215,6 @@ const styles = StyleSheet.create({
   subtitle: { color: colors.mutedForeground, fontSize: 12, marginTop: 3 },
 
   profileCard: { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: colors.card, borderRadius: 16, borderWidth: 1, borderColor: colors.border, padding: 16 },
-  // AFTER (correct — comma added at end of avatarWrap line)
 avatarWrap: { width: 52, height: 52, borderRadius: 14, backgroundColor: colors.primary + '22', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.primary + '44' },
 avatarInitial: { color: colors.primary, fontSize: 22, fontWeight: '800' },
   profileName: { color: colors.foreground, fontSize: 15, fontWeight: '700' },
