@@ -113,8 +113,10 @@ import colors from '../constants/colors';
 //     ]);
 //   }, [addLog]);
 
+
 export default function AccountScreen() {
   const insets = useSafeAreaInsets();
+  const { user , logout } = useAuth();
 
   return (
     <ScrollView
@@ -131,11 +133,13 @@ export default function AccountScreen() {
       {/* Profile card */}
       <View style={styles.profileCard}>
         <View style={styles.avatarWrap}>
-          <Icon name="cpu" size={26} color={colors.primary} />
+         <Text style={styles.avatarInitial}>
+            {user?.name ? user.name.charAt(0).toUpperCase() : '?'}
+          </Text>
         </View>
         <View style={styles.flex1}>
-          <Text style={styles.profileName}>Saurabh</Text>
-          <Text style={styles.profileDesc}>MQTT · ESP32 · Local IoT</Text>
+         <Text style={styles.profileName}>{user?.name ?? 'Unknown User'}</Text>
+          <Text style={styles.profileDesc}>{user?.email ?? 'No email set'}</Text>
         </View>
         <View style={styles.onlineBadge}>
           <View style={[styles.bDot, { backgroundColor: colors.success }]} />
@@ -190,7 +194,8 @@ export default function AccountScreen() {
       <TouchableOpacity
         style={styles.signOutBtn}
         activeOpacity={0.8}
-        onPress={() => Alert.alert('Sign Out', 'This is a local IoT control app — no account to sign out from.', [{ text: 'OK' }])}
+        onPress={() => Alert.alert('Sign Out', 'Are you sure you want to sign out?.', 
+        [{ text: 'Cancel', style: 'cancel' }, { text: 'Sign Out', style: 'destructive', onPress: logout }])}
       >
         <Icon name="log-out" size={15} color={colors.destructive} />
         <Text style={styles.signOutText}>Sign Out</Text>
@@ -210,7 +215,9 @@ const styles = StyleSheet.create({
   subtitle: { color: colors.mutedForeground, fontSize: 12, marginTop: 3 },
 
   profileCard: { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: colors.card, borderRadius: 16, borderWidth: 1, borderColor: colors.border, padding: 16 },
-  avatarWrap: { width: 52, height: 52, borderRadius: 14, backgroundColor: colors.primary + '22', alignItems: 'center', justifyContent: 'center' },
+  // AFTER (correct — comma added at end of avatarWrap line)
+avatarWrap: { width: 52, height: 52, borderRadius: 14, backgroundColor: colors.primary + '22', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.primary + '44' },
+avatarInitial: { color: colors.primary, fontSize: 22, fontWeight: '800' },
   profileName: { color: colors.foreground, fontSize: 15, fontWeight: '700' },
   profileDesc: { color: colors.mutedForeground, fontSize: 12, marginTop: 2 },
   onlineBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: colors.success + '22', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: colors.success + '44' },
