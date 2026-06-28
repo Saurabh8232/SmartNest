@@ -77,6 +77,8 @@ export default function DashboardScreen() {
       setData(dash);
       setOffline(false);
       setRefreshing(false);
+      if (dash.powerHistory?.length) setPowerHistory(dash.powerHistory);
+      if (dash.currentHistory?.length) setCurrentHistory(dash.currentHistory);
     });
     const removeAlerts = subscribeToDashboardAlerts(nextAlerts => {
       setAlerts(nextAlerts.filter(a => !a.isResolved).slice(0, 3));

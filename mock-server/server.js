@@ -51,7 +51,8 @@ let devices = [
 ];
 
 // ── Live fluctuation ──────────────────────────────────────────────
-let voltage = 220.4, current = 2.1, power = 462.0, energy = 1.84;
+let voltage = 220.4, current = 2.1, power = 462.0,
+ energy = 1.84, temperature = 24.0, humidity = 45.0;
 let voltageHistory = [], powerHistory = [], currentHistory = [];
 
 function tick() {
@@ -59,6 +60,8 @@ function tick() {
   current = +(2.1  + (Math.random() - 0.5) * 0.5).toFixed(2);
   power   = +(voltage * current).toFixed(1);
   energy  = +(energy + power / 3600000).toFixed(4);
+  temperature = +(24 + (Math.random() - 0.5) * 3).toFixed(1);
+  humidity = +(45 + (Math.random() - 0.5) * 6).toFixed(1);
   const ts = new Date().toISOString();
   voltageHistory.push({ timestamp: ts, value: voltage });
   powerHistory.push({ timestamp: ts, value: power });
@@ -86,6 +89,7 @@ function getDashboardData() {
     frequency: 50.0, powerFactor: 0.92,
     lastUpdated: new Date().toISOString(),
     voltageHistory, powerHistory, currentHistory, energyHistory: [],
+    temperature, humidity
   };
 }
 
