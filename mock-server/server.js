@@ -11,6 +11,7 @@ const io = new Server(server, { cors: { origin: "*" } });
 // ── Mock State ────────────────────────────────────────────────────
 let mainBoard = {
   masterLockEnabled: false,
+  masterShutdownEnabled: false,
   totalCurrent: 4.2,
   relays: [
     { id: "r1", name: "Living Room Fan",  number: 1, isOn: true,  current: 1.2, status: "normal" },
@@ -18,7 +19,7 @@ let mainBoard = {
     { id: "r3", name: "Kitchen Exhaust",  number: 3, isOn: true,  current: 0.8, status: "normal" },
     { id: "r4", name: "Outdoor Lights",   number: 4, isOn: false, current: 0.0, status: "normal" },
     { id: "r5", name: "Water Pump",       number: 5, isOn: true,  current: 2.2, status: "normal" },
-    { id: "r6", name: "Garden Lights",    number: 6, isOn: false, current: 0.0, status: "offline"},
+    { id: "r6", name: "Garden Lights",    number: 6, isOn: false, current: 0.0, status: "normal"},
   ],
 };
 
@@ -53,7 +54,7 @@ let alerts = [
 let devices = [
   { id: "dev1", name: "Main Board",    deviceId: "SN-MB-001", ipAddress: "192.168.1.101", macAddress: "AA:BB:CC:DD:EE:01", isOnline: true,  rssi: -55, lastConnected: new Date(Date.now() - 60000).toISOString(),  type: "main-board"    },
   { id: "dev2", name: "AC Controller", deviceId: "SN-AC-001", ipAddress: "192.168.1.102", macAddress: "AA:BB:CC:DD:EE:02", isOnline: true,  rssi: -62, lastConnected: new Date(Date.now() - 30000).toISOString(),  type: "ac-controller" },
-  { id: "dev3", name: "Digital Board", deviceId: "SN-DB-001", ipAddress: "192.168.1.103", macAddress: "AA:BB:CC:DD:EE:03", isOnline: false, rssi: -80, lastConnected: new Date(Date.now() - 120000).toISOString(), type: "digital-board"  },
+  { id: "dev3", name: "Digital Board", deviceId: "SN-DB-001", ipAddress: "192.168.1.103", macAddress: "AA:BB:CC:DD:EE:03", isOnline: true, rssi: -80, lastConnected: new Date(Date.now() - 120000).toISOString(), type: "digital-board"  },
 ];
 
 // ── Live voltage/power fluctuation ───────────────────────────────
@@ -125,6 +126,7 @@ io.on("connection", (socket) => {
     console.log(`Master lock → ${enabled}`);
   });
   socket.on("main-board:master-shutdown", ({ enabled }) => {
+    mainBoard.masterShutdownEnabled = enabled;
     if (enabled) mainBoard.relays.forEach(r => { r.isOn = false; r.current = 0; });
     io.emit("main-board:update", mainBoard);
   });
@@ -168,7 +170,8 @@ io.on("connection", (socket) => {
 
 const PORT = 5000;
 server.listen(PORT, "0.0.0.0", () => {
-  console.log(`\n SmartNest Mock Server running`);
+  console.log(`\n
+     SmartNest Mock Server running`);
   console.log(`   Socket.IO → http://0.0.0.0:${PORT}`);
   console.log(`   Find your PC IP with: ipconfig (Windows)\n`);
 });
