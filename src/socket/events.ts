@@ -20,6 +20,7 @@ export const SOCKET_EVENTS = {
   digitalBoardRequest: 'digital-board:request',
   digitalBoardUpdate: 'digital-board:update',
   digitalRelayControl: 'digital-board:relay-control',
+  digitalMasterLockControl: 'digital-board:master-lock',
 
   acRequest: 'ac:request',
   acUpdate: 'ac:update',

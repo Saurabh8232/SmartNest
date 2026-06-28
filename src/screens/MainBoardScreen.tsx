@@ -75,7 +75,7 @@ export default function MainBoardScreen() {
   const handleShutdown = useCallback(async (next: boolean) => {
     Alert.alert(
       next ? 'Enable Master Shutdown?' : 'Disable Master Shutdown?',
-      next ? 'All local relays will be turned OFF and Digital Board relay will be locked.' : 'Relays will be unlocked and restored.',
+      next ? 'All local relays will be turned OFF' : 'Relays will be unlocked and restored.',
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Confirm', style: next ? 'destructive' : 'default', onPress: async () => {
@@ -169,7 +169,7 @@ export default function MainBoardScreen() {
             Master Shutdown {shutdown ? 'ON' : 'OFF'}
           </Text>
           <Text style={styles.controlDesc}>
-            {shutdown ? 'All relays OFF · Digital Board locked' : 'System running normally'}
+            {shutdown ? 'All relays OFF - System shutdown' : 'System running normally'}
           </Text>
         </View>
         <Switch

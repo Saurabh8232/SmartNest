@@ -49,6 +49,7 @@ export interface DigitalRelay {
 }
 
 export interface DigitalBoardStatus {
+  masterLockEnabled: boolean;
   relays: DigitalRelay[];
 }
 
