@@ -92,7 +92,27 @@ function RootNavigator() {
   }
 
   return (
-    <NavigationContainer>
+    // ✅ All 6 required properties provided
+<NavigationContainer
+  key={user ? 'authenticated' : 'unauthenticated'}
+  theme={{
+    dark: true,
+    colors: {
+      primary: colors.primary,
+      background: colors.background,
+      card: colors.card,
+      text: colors.foreground,
+      border: colors.border,
+      notification: colors.destructive,
+    },
+    fonts: {
+      regular: { fontFamily: 'System', fontWeight: '400' },
+      medium: { fontFamily: 'System', fontWeight: '500' },
+      bold: { fontFamily: 'System', fontWeight: '700' },
+      heavy: { fontFamily: 'System', fontWeight: '900' },
+    },
+  }}
+>
       {user ? <MainTabs /> : <LoginScreen />}
     </NavigationContainer>
   );
