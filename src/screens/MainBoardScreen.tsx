@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, RefreshControl, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -14,6 +15,7 @@ import {
 } from '../socket/liveCommunication';
 import colors from '../constants/colors';
 
+const CACHE_KEY = '@smartnest_mainboard_v1';
 const DEFAULT_DATA: MainBoardStatus = { masterLockEnabled: false, shutdownEnabled: false, totalCurrent: 0, relays: [] };
 
 export default function MainBoardScreen() {
@@ -23,30 +25,29 @@ export default function MainBoardScreen() {
   const [offline, setOffline] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  const load = useCallback(() => {
-    requestMainBoard();
+  // ── Load cached data on app start ──────────────────────────────
+  useEffect(() => {
+    AsyncStorage.getItem(CACHE_KEY).then(raw => {
+      if (!raw) return;
+      try { setData(JSON.parse(raw)); } catch {}
+    });
   }, []);
+
+  const load = useCallback(() => { requestMainBoard(); }, []);
 
   useEffect(() => {
     const removeBoard = subscribeToMainBoard(status => {
       setData(status);
       setOffline(false);
       setRefreshing(false);
+      // ── Save to cache ─────────────────────────────────────────
+      AsyncStorage.setItem(CACHE_KEY, JSON.stringify(status)).catch(() => {});
     });
     const removeConnection = subscribeToConnection(
-      () => {
-        setOffline(false);
-        load();
-      },
-      () => {
-        setOffline(true);
-        setRefreshing(false);
-      },
+      () => { setOffline(false); load(); },
+      () => { setOffline(true); setRefreshing(false); },
     );
-    return () => {
-      removeBoard();
-      removeConnection();
-    };
+    return () => { removeBoard(); removeConnection(); };
   }, [load]);
 
   const handleToggle = useCallback(async (id: string, action: 'on' | 'off') => {
@@ -96,7 +97,6 @@ export default function MainBoardScreen() {
       contentContainerStyle={[styles.content, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 76 }]}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.primary} />}
     >
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Icon name="arrow-left" size={18} color={colors.primary} />
@@ -113,7 +113,6 @@ export default function MainBoardScreen() {
         )}
       </View>
 
-      {/* Stats Row */}
       <View style={styles.statsRow}>
         {[
           { label: 'Total Current', val: `${data.totalCurrent.toFixed(2)} A`, color: colors.primary, icon: 'activity' },
@@ -129,7 +128,6 @@ export default function MainBoardScreen() {
         ))}
       </View>
 
-      {/* Master Lock */}
       <Text style={styles.sectionTitle}>SYSTEM CONTROLS</Text>
       <TouchableOpacity
         style={[styles.controlCard, { borderColor: locked ? colors.warning + '55' : colors.border, backgroundColor: locked ? colors.warning + '0a' : colors.card }]}
@@ -155,7 +153,6 @@ export default function MainBoardScreen() {
         />
       </TouchableOpacity>
 
-      {/* Master Shutdown */}
       <TouchableOpacity
         style={[styles.controlCard, { borderColor: shutdown ? colors.destructive + '55' : colors.border, backgroundColor: shutdown ? colors.destructive + '0a' : colors.card }]}
         onPress={() => handleShutdown(!shutdown)}
@@ -180,7 +177,6 @@ export default function MainBoardScreen() {
         />
       </TouchableOpacity>
 
-      {/* Relay Controls */}
       <Text style={styles.sectionTitle}>RELAY CONTROLS</Text>
 
       {data.relays.length === 0 ? (
@@ -256,5 +252,6 @@ const styles = StyleSheet.create({
   emptyCard: { alignItems: 'center', gap: 8, paddingVertical: 48, backgroundColor: colors.card, borderRadius: 16, borderWidth: 1, borderColor: colors.border },
   emptyTitle: { color: colors.foreground, fontSize: 16, fontWeight: '600' },
   emptyDesc: { color: colors.mutedForeground, fontSize: 13, textAlign: 'center' },
+  secondary: { backgroundColor: colors.secondary },
   flex1: { flex: 1 },
 });

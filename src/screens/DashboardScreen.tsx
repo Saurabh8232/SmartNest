@@ -91,8 +91,8 @@ export default function DashboardScreen() {
       setData(dash);
       setOffline(false);
       setRefreshing(false);
-      if (dash.powerHistory?.length)   setPowerHistory(dash.powerHistory);
-      if (dash.currentHistory?.length) setCurrentHistory(dash.currentHistory);
+      // if (dash.powerHistory?.length)   setPowerHistory(dash.powerHistory);
+      // if (dash.currentHistory?.length) setCurrentHistory(dash.currentHistory);
 
       // ── Save to cache for next app restart ──────────────────
       AsyncStorage.setItem(CACHE_KEY, JSON.stringify({
