@@ -46,11 +46,13 @@ export interface DigitalRelay {
   current: number;
   power: number;
   status: 'normal' | 'error' | 'offline';
+  switchState: 'pressed' | 'released';
 }
 
 export interface DigitalBoardStatus {
   masterLockEnabled: boolean;
   relays: DigitalRelay[];
+  totalCurrent: number;
 }
 
 export interface AcStatus {

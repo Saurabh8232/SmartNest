@@ -1,4 +1,3 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, RefreshControl, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -18,11 +17,7 @@ import {
 import MiniChart from '../components/MiniChart';
 import colors from '../constants/colors';
 
-const BOARD_CACHE_KEY = '@smartnest_digitalboard_v1';
-const DASH_CACHE_KEY  = '@smartnest_digitalboard_dash_v1';
-
-const DEFAULT_BOARD: DigitalBoardStatus = { masterLockEnabled: false, relays: [] };
-const DEFAULT_DASH: DashboardData = {
+const DEFAULT_DATA: DigitalBoardStatus = { relays: [], masterLockEnabled: false, totalCurrent: 0 };const DEFAULT_DASH: DashboardData = {
   systemOnline: false, totalDevices: 0, activeRelays: 0, totalCurrent: 0,
   voltage: 0, current: 0, power: 0, energy: 0, frequency: 0, powerFactor: 0,
   voltageHistory: [], powerHistory: [], energyHistory: [], currentHistory: [],
@@ -35,22 +30,10 @@ export default function DigitalBoardScreen() {
   const { width } = useWindowDimensions();
   const chartWidth = width - 64;
 
-  const [board, setBoard] = useState<DigitalBoardStatus>(DEFAULT_BOARD);
+  const [board, setBoard] = useState<DigitalBoardStatus>(DEFAULT_DATA);
   const [dash, setDash] = useState<DashboardData>(DEFAULT_DASH);
   const [offline, setOffline] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-
-  // ── Load cached data on app start ──────────────────────────────
-  useEffect(() => {
-    AsyncStorage.getItem(BOARD_CACHE_KEY).then(raw => {
-      if (!raw) return;
-      try { setBoard(JSON.parse(raw)); } catch {}
-    });
-    AsyncStorage.getItem(DASH_CACHE_KEY).then(raw => {
-      if (!raw) return;
-      try { setDash(JSON.parse(raw)); } catch {}
-    });
-  }, []);
 
   const load = useCallback(() => {
     requestDigitalBoard();
@@ -62,13 +45,8 @@ export default function DigitalBoardScreen() {
       setBoard(status);
       setOffline(false);
       setRefreshing(false);
-      // ── Save to cache ─────────────────────────────────────────
-      AsyncStorage.setItem(BOARD_CACHE_KEY, JSON.stringify(status)).catch(() => {});
     });
-    const removeDashboard = subscribeToDashboard(d => {
-      setDash(d);
-      AsyncStorage.setItem(DASH_CACHE_KEY, JSON.stringify(d)).catch(() => {});
-    });
+    const removeDashboard = subscribeToDashboard(setDash);
     const removeConnection = subscribeToConnection(
       () => { setOffline(false); load(); },
       () => { setOffline(true); setRefreshing(false); },
@@ -120,6 +98,7 @@ export default function DigitalBoardScreen() {
       contentContainerStyle={[styles.content, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 76 }]}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.primary} />}
     >
+      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Icon name="arrow-left" size={18} color={colors.primary} />
@@ -136,6 +115,7 @@ export default function DigitalBoardScreen() {
         )}
       </View>
 
+      {/* Electrical Parameters */}
       <Text style={styles.sectionTitle}>ELECTRICAL PARAMETERS</Text>
       <View style={styles.paramsGrid}>
         {params.map(p => (
@@ -150,6 +130,7 @@ export default function DigitalBoardScreen() {
         ))}
       </View>
 
+      {/* Power Chart */}
       {dash.powerHistory.length > 1 && (
         <>
           <Text style={styles.sectionTitle}>POWER CONSUMPTION TREND</Text>
@@ -166,6 +147,7 @@ export default function DigitalBoardScreen() {
         </>
       )}
 
+      {/* Master Lock */}
       <Text style={styles.sectionTitle}>SYSTEM CONTROLS</Text>
       <TouchableOpacity
         style={[styles.controlCard, { borderColor: locked ? colors.warning + '55' : colors.border, backgroundColor: locked ? colors.warning + '0a' : colors.card }]}
@@ -191,6 +173,7 @@ export default function DigitalBoardScreen() {
         />
       </TouchableOpacity>
 
+      {/* Relay Control */}
       <Text style={styles.sectionTitle}>RELAY CONTROL</Text>
 
       {relay === null ? (
@@ -222,6 +205,7 @@ export default function DigitalBoardScreen() {
               thumbColor={relay.isOn ? colors.success : colors.mutedForeground}
             />
           </View>
+
           <View style={styles.relayMetrics}>
             <View style={styles.relayMetric}>
               <Text style={styles.relayMetricLabel}>ACS Current</Text>
@@ -277,7 +261,6 @@ const styles = StyleSheet.create({
   controlIcon: { width: 46, height: 46, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   controlTitle: { fontSize: 15, fontWeight: '700', marginBottom: 2 },
   controlDesc: { color: colors.mutedForeground, fontSize: 12 },
-  secondary: { backgroundColor: colors.secondary },
   relayCard: { backgroundColor: colors.card, borderRadius: 16, borderWidth: 1, padding: 16, gap: 14 },
   relayTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   relayIconWrap: { width: 48, height: 48, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
@@ -296,6 +279,7 @@ const styles = StyleSheet.create({
   offlineNote: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.warning + '11', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: colors.warning + '33' },
   offlineNoteText: { flex: 1, color: colors.warning, fontSize: 12 },
   flex1: { flex: 1 },
+  secondary: { backgroundColor: colors.secondary },
 });
 
 const paramCardStyle = (color: string) => [styles.paramCard, { borderTopColor: color, borderTopWidth: 2 }];
