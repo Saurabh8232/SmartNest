@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   RefreshControl, ScrollView, StyleSheet,
@@ -19,6 +20,8 @@ import { TimeSeriesPoint } from '../types/communication';
 import { REST_BASE_URL } from '../config/communication';
 import MiniChart from '../components/MiniChart';
 import colors from '../constants/colors';
+
+const CACHE_KEY = '@smartnest_dashboard_v1';
 
 const DEFAULT_DATA: DashboardData = {
   systemOnline: false, totalDevices: 0, activeRelays: 0, totalCurrent: 0,
@@ -50,6 +53,19 @@ export default function DashboardScreen() {
   const [powerHistory, setPowerHistory] = useState<TimeSeriesPoint[]>([]);
   const [currentHistory, setCurrentHistory] = useState<TimeSeriesPoint[]>([]);
 
+  // ── Load cached data on app start ─────────────────────────────
+  useEffect(() => {
+    AsyncStorage.getItem(CACHE_KEY).then(raw => {
+      if (!raw) return;
+      try {
+        const cached = JSON.parse(raw);
+        if (cached.data)                    setData(cached.data);
+        if (cached.powerHistory?.length)    setPowerHistory(cached.powerHistory);
+        if (cached.currentHistory?.length)  setCurrentHistory(cached.currentHistory);
+      } catch {}
+    });
+  }, []);
+
   const fetchTrends = useCallback(async () => {
     try {
       const res = await fetch(`${REST_BASE_URL}/dashboard`);
@@ -57,8 +73,7 @@ export default function DashboardScreen() {
       const json = await res.json();
       if (Array.isArray(json.powerHistory)) setPowerHistory(json.powerHistory);
       if (Array.isArray(json.currentHistory)) setCurrentHistory(json.currentHistory);
-    } catch {
-    }
+    } catch {}
   }, []);
 
   const load = useCallback(() => {
@@ -67,7 +82,6 @@ export default function DashboardScreen() {
     fetchTrends();
   }, [fetchTrends]);
 
-  // ← NEW: fetch graph data on mount, no socket needed
   useEffect(() => {
     fetchTrends();
   }, [fetchTrends]);
@@ -77,21 +91,24 @@ export default function DashboardScreen() {
       setData(dash);
       setOffline(false);
       setRefreshing(false);
-      // if (dash.powerHistory?.length) setPowerHistory(dash.powerHistory);
-      // if (dash.currentHistory?.length) setCurrentHistory(dash.currentHistory);
+      if (dash.powerHistory?.length)   setPowerHistory(dash.powerHistory);
+      if (dash.currentHistory?.length) setCurrentHistory(dash.currentHistory);
+
+      // ── Save to cache for next app restart ──────────────────
+      AsyncStorage.setItem(CACHE_KEY, JSON.stringify({
+        data: dash,
+        powerHistory: dash.powerHistory ?? [],
+        currentHistory: dash.currentHistory ?? [],
+      })).catch(() => {});
     });
+
     const removeAlerts = subscribeToDashboardAlerts(nextAlerts => {
       setAlerts(nextAlerts.filter(a => !a.isResolved).slice(0, 3));
     });
+
     const removeConnection = subscribeToConnection(
-      () => {
-        setOffline(false);
-        load();
-      },
-      () => {
-        setOffline(true);
-        setRefreshing(false);
-      },
+      () => { setOffline(false); load(); },
+      () => { setOffline(true); setRefreshing(false); },
     );
 
     return () => {
@@ -111,14 +128,14 @@ export default function DashboardScreen() {
   const humidityValue = typeof rawHumidity === 'number' ? rawHumidity : Number.parseFloat(String(rawHumidity).replace(/[^0-9.-]/g, ''));
 
   const paramCards = [
-    { label: 'Voltage', value: data.voltage > 0 ? data.voltage.toFixed(1) : '--', unit: 'V', icon: 'zap', color: colors.primary },
-    { label: 'Current', value: data.current > 0 ? data.current.toFixed(2) : '--', unit: 'A', icon: 'activity', color: colors.primary },
-    { label: 'Power', value: data.power > 0 ? data.power.toFixed(0) : '--', unit: 'W', icon: 'cpu', color: colors.accent },
-    { label: 'Energy', value: data.energy > 0 ? data.energy.toFixed(2) : '--', unit: 'kWh', icon: 'battery-charging', color: colors.success },
-    { label: 'Temperature', value: Number.isFinite(temperatureValue) ? temperatureValue.toFixed(0) : '--', unit: '°C', icon: 'thermometer', color: colors.warning },
-    { label: 'Humidity', value: Number.isFinite(humidityValue) ? humidityValue.toFixed(0) : '--', unit: '%', icon: 'droplet', color: '#38bdf8' },
-    { label: 'Active Relays', value: String(data.activeRelays), unit: '', icon: 'toggle-right', color: colors.success },
-    { label: 'Devices Online', value: String(data.totalDevices), unit: '', icon: 'wifi', color: colors.primary },
+    { label: 'Voltage',       value: data.voltage > 0 ? data.voltage.toFixed(1) : '--',       unit: 'V',    icon: 'zap',              color: colors.primary  },
+    { label: 'Current',       value: data.current > 0 ? data.current.toFixed(2) : '--',       unit: 'A',    icon: 'activity',         color: colors.primary  },
+    { label: 'Power',         value: data.power > 0   ? data.power.toFixed(0)   : '--',       unit: 'W',    icon: 'cpu',              color: colors.accent   },
+    { label: 'Energy',        value: data.energy > 0  ? data.energy.toFixed(2)  : '--',       unit: 'kWh',  icon: 'battery-charging', color: colors.success  },
+    { label: 'Temperature',   value: Number.isFinite(temperatureValue) ? temperatureValue.toFixed(0) : '--', unit: '°C', icon: 'thermometer', color: colors.warning },
+    { label: 'Humidity',      value: Number.isFinite(humidityValue)    ? humidityValue.toFixed(0)    : '--', unit: '%',  icon: 'droplet',     color: '#38bdf8'      },
+    { label: 'Active Relays', value: String(data.activeRelays),  unit: '', icon: 'toggle-right', color: colors.success },
+    { label: 'Devices Online',value: String(data.totalDevices),  unit: '', icon: 'wifi',          color: colors.primary },
   ];
 
   const cardW = (width - 32 - 10) / 2;
