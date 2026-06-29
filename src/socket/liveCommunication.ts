@@ -10,6 +10,9 @@ import { SOCKET_EVENTS } from './events';
 import socketManager from './SocketManager';
 
 type Unsubscribe = () => void;
+type ShutdownAllListener = () => void;
+
+const shutdownAllListeners = new Set<ShutdownAllListener>();
 
 function subscribe<T>(
   updateEvent: string,
@@ -65,6 +68,21 @@ export const masterShutdownAll = (enabled: boolean) => {
 // ── One-shot: turns all relays OFF on both boards, no persistent state ────────
 export const shutdownAll = () => {
   socketManager.emit(SOCKET_EVENTS.shutdownAll);
+  shutdownAllListeners.forEach(listener => listener());
+  setTimeout(() => {
+    requestDashboard();
+    requestMainBoard();
+    requestDigitalBoard();
+  }, 300);
+};
+
+export const subscribeToShutdownAll = (
+  listener: ShutdownAllListener,
+): Unsubscribe => {
+  shutdownAllListeners.add(listener);
+  return () => {
+    shutdownAllListeners.delete(listener);
+  };
 };
 
 // ── Individual relay lock ────────────────────────────────────────────────────

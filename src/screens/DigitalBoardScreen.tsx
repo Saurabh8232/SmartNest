@@ -14,6 +14,7 @@ import {
   subscribeToConnection,
   subscribeToDashboard,
   subscribeToDigitalBoard,
+  subscribeToShutdownAll,
 } from '../socket/liveCommunication';
 import MiniChart from '../components/MiniChart';
 import colors from '../constants/colors';
@@ -67,7 +68,29 @@ export default function DigitalBoardScreen() {
       () => { setOffline(false); load(); },
       () => { setOffline(true); setRefreshing(false); },
     );
-    return () => { removeBoard(); removeDashboard(); removeConnection(); };
+    const removeShutdownAll = subscribeToShutdownAll(() => {
+      setBoard(prev => {
+        const next = {
+          ...prev,
+          totalCurrent: 0,
+          relays: prev.relays.map(relay => ({
+            ...relay,
+            isOn: false,
+            current: 0,
+            power: 0,
+          })),
+        };
+        AsyncStorage.setItem(CACHE_KEY, JSON.stringify(next)).catch(() => {});
+        return next;
+      });
+      setRefreshing(false);
+    });
+    return () => {
+      removeBoard();
+      removeDashboard();
+      removeConnection();
+      removeShutdownAll();
+    };
   }, [load]);
 
   const relay = board.relays[0] ?? null;

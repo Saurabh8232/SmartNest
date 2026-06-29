@@ -11,6 +11,7 @@ import {
   requestMainBoard,
   subscribeToConnection,
   subscribeToMainBoard,
+  subscribeToShutdownAll,
 } from '../socket/liveCommunication';
 import colors from '../constants/colors';
 
@@ -46,7 +47,23 @@ export default function MainBoardScreen() {
       () => { setOffline(false); load(); },
       () => { setOffline(true); setRefreshing(false); },
     );
-    return () => { removeBoard(); removeConnection(); };
+    const removeShutdownAll = subscribeToShutdownAll(() => {
+      setData(prev => {
+        const next = {
+          ...prev,
+          totalCurrent: 0,
+          relays: prev.relays.map(relay => ({
+            ...relay,
+            isOn: false,
+            current: 0,
+          })),
+        };
+        AsyncStorage.setItem(CACHE_KEY, JSON.stringify(next)).catch(() => {});
+        return next;
+      });
+      setRefreshing(false);
+    });
+    return () => { removeBoard(); removeConnection(); removeShutdownAll(); };
   }, [load]);
 
   const handleToggle = useCallback((id: string, action: 'on' | 'off') => {
