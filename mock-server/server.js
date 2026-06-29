@@ -25,12 +25,12 @@ let mainBoard = {
 
 let digitalBoard = {
   masterLockEnabled: false,
-  totalCurrent: 1.1,
+  totalCurrent: 0.6,
   relays: [
-    { id: "d1", name: "Smart Plug 1", isOn: true,  current: 0.6, power: 132, status: "normal", switchState: "released", locked: false },
+    { id: "d1", name: "Smart Plug 1", isOn: true, current: 0.6, power: 132, status: "normal", switchState: "released", locked: false },
     // { id: "d2", name: "Smart Plug 2", isOn: false, current: 0.0, power: 0,   status: "normal", switchState: "released", locked: false },
     // { id: "d3", name: "LED Strip",    isOn: true,  current: 0.5, power: 110, status: "normal", switchState: "released", locked: false },
-  ]
+  ],
 };
 
 let acStatus = {
@@ -40,14 +40,14 @@ let acStatus = {
 };
 
 let alerts = [
-  { id: "a1", type: "electrical",   code: "OV01", title: "High Voltage Detected",       description: "Voltage exceeded 240V threshold.", severity: "warning", suggestedSolution: "Check main supply.",                        timestamp: new Date(Date.now() - 300000).toISOString(), isResolved: false, deviceName: "Main Board"    },
-  { id: "a2", type: "communication", code: "CM01", title: "Digital Board Reconnected",  description: "Lost connection for 30s.",          severity: "info",    suggestedSolution: "Monitor for recurring disconnections.", timestamp: new Date(Date.now() - 900000).toISOString(), isResolved: false, deviceName: "Digital Board" },
+  { id: "a1", type: "electrical",    code: "OV01", title: "High Voltage Detected",      description: "Voltage exceeded 240V threshold.", severity: "warning", suggestedSolution: "Check main supply.",                        timestamp: new Date(Date.now() - 300000).toISOString(), isResolved: false, deviceName: "Main Board"    },
+  { id: "a2", type: "communication", code: "CM01", title: "Digital Board Reconnected",  description: "Lost connection for 30s.",          severity: "info",    suggestedSolution: "Monitor for recurring disconnections.",  timestamp: new Date(Date.now() - 900000).toISOString(), isResolved: false, deviceName: "Digital Board" },
 ];
 
 let devices = [
   { id: "dev1", name: "Main Board",    deviceId: "SN-MB-001", ipAddress: "192.168.1.101", macAddress: "AA:BB:CC:DD:EE:01", isOnline: true, rssi: -55, lastConnected: new Date(Date.now() - 60000).toISOString(),  type: "main-board"    },
   { id: "dev2", name: "AC Controller", deviceId: "SN-AC-001", ipAddress: "192.168.1.102", macAddress: "AA:BB:CC:DD:EE:02", isOnline: true, rssi: -62, lastConnected: new Date(Date.now() - 30000).toISOString(),  type: "ac-controller" },
-  { id: "dev3", name: "Digital Board", deviceId: "SN-DB-001", ipAddress: "192.168.1.103", macAddress: "AA:BB:CC:DD:EE:03", isOnline: true, rssi: -72, lastConnected: new Date(Date.now() - 20000).toISOString(), type: "digital-board" },
+  { id: "dev3", name: "Digital Board", deviceId: "SN-DB-001", ipAddress: "192.168.1.103", macAddress: "AA:BB:CC:DD:EE:03", isOnline: true, rssi: -72, lastConnected: new Date(Date.now() - 20000).toISOString(),  type: "digital-board" },
 ];
 
 // ── Live fluctuation ──────────────────────────────────────────────
@@ -71,7 +71,7 @@ function tick() {
   if (powerHistory.length > 20)   powerHistory.shift();
   if (currentHistory.length > 20) currentHistory.shift();
 
-  mainBoard.totalCurrent = +current.toFixed(2);
+  mainBoard.totalCurrent = +mainBoard.relays.reduce((s, r) => s + r.current, 0).toFixed(2);
 
   // Simulate random switchState toggles on digital board
   digitalBoard.relays.forEach(r => {
@@ -168,6 +168,17 @@ io.on("connection", (socket) => {
     console.log(`System shutdown → ${enabled}`);
   });
 
+  // ── One-shot shutdown: turns ALL relays OFF on BOTH boards, no persistent state ──
+  socket.on("system:shutdown-all", () => {
+    mainBoard.relays.forEach(r => { r.isOn = false; r.current = 0; });
+    mainBoard.totalCurrent = 0;
+    digitalBoard.relays.forEach(r => { r.isOn = false; r.current = 0; r.power = 0; });
+    digitalBoard.totalCurrent = 0;
+    io.emit("main-board:update", mainBoard);
+    io.emit("digital-board:update", digitalBoard);
+    console.log(`System: shutdown-all (one-shot — relays OFF, no lock, controls still work)`);
+  });
+
   // ── Digital Board ───────────────────────────────────────────────
   socket.on("digital-board:request", () => socket.emit("digital-board:update", digitalBoard));
 
@@ -201,14 +212,14 @@ io.on("connection", (socket) => {
   socket.on("ac:request", () => socket.emit("ac:update", acStatus));
 
   socket.on("ac:control", ({ action, value }) => {
-    if (action === "power_on")         { acStatus.isOn = true; acStatus.current = 3.5; acStatus.power = 770; }
-    if (action === "power_off")        { acStatus.isOn = false; acStatus.current = 0; acStatus.power = 0; }
-    if (action === "set_temperature")    acStatus.temperature = value;
-    if (action === "temperature_up")     acStatus.temperature = Math.min(30, acStatus.temperature + 1);
-    if (action === "temperature_down")   acStatus.temperature = Math.max(16, acStatus.temperature - 1);
-    if (action === "set_mode")           acStatus.mode = value;
-    if (action === "set_fan_speed")      acStatus.fanSpeed = value;
-    if (action === "toggle_swing")       acStatus.swingOn = !acStatus.swingOn;
+    if (action === "power_on")          { acStatus.isOn = true; acStatus.current = 3.5; acStatus.power = 770; }
+    if (action === "power_off")         { acStatus.isOn = false; acStatus.current = 0; acStatus.power = 0; }
+    if (action === "set_temperature")     acStatus.temperature = value;
+    if (action === "temperature_up")      acStatus.temperature = Math.min(30, acStatus.temperature + 1);
+    if (action === "temperature_down")    acStatus.temperature = Math.max(16, acStatus.temperature - 1);
+    if (action === "set_mode")            acStatus.mode = value;
+    if (action === "set_fan_speed")       acStatus.fanSpeed = value;
+    if (action === "toggle_swing")        acStatus.swingOn = !acStatus.swingOn;
     io.emit("ac:update", acStatus);
     console.log(`AC ${action}`, value ?? "");
   });

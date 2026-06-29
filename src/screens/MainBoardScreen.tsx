@@ -6,10 +6,9 @@ import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Feather';
 import {
   controlMainRelay,
+  lockMainRelay,
   MainBoardStatus,
   requestMainBoard,
-  setMasterLock,
-  setMasterShutdown,
   subscribeToConnection,
   subscribeToMainBoard,
 } from '../socket/liveCommunication';
@@ -50,7 +49,7 @@ export default function MainBoardScreen() {
     return () => { removeBoard(); removeConnection(); };
   }, [load]);
 
-  const handleToggle = useCallback(async (id: string, action: 'on' | 'off') => {
+  const handleToggle = useCallback((id: string, action: 'on' | 'off') => {
     setData(prev => ({
       ...prev,
       relays: prev.relays.map(r => r.id === id ? { ...r, isOn: action === 'on' } : r),
@@ -59,36 +58,27 @@ export default function MainBoardScreen() {
     controlMainRelay(id, action);
   }, [offline]);
 
-  const handleMasterLock = useCallback(async (next: boolean) => {
+  const handleRelayLock = useCallback((id: string, currentLocked: boolean) => {
+    const next = !currentLocked;
     Alert.alert(
-      next ? 'Enable Master Lock?' : 'Disable Master Lock?',
-      next ? 'Physical switches will be disabled. App control only.' : 'Physical switches will be re-enabled.',
+      next ? 'Lock Relay?' : 'Unlock Relay?',
+      next ? 'This relay will be locked. Toggle control will be disabled.' : 'This relay will be unlocked and can be controlled again.',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Confirm', onPress: async () => {
-          setData(p => ({ ...p, masterLockEnabled: next }));
-          if (!offline) setMasterLock(next);
-        }},
+        {
+          text: next ? 'Lock' : 'Unlock',
+          onPress: () => {
+            setData(prev => ({
+              ...prev,
+              relays: prev.relays.map(r => r.id === id ? { ...r, locked: next } : r),
+            }));
+            if (!offline) lockMainRelay(id, next);
+          },
+        },
       ]
     );
   }, [offline]);
 
-  const handleShutdown = useCallback(async (next: boolean) => {
-    Alert.alert(
-      next ? 'Enable Master Shutdown?' : 'Disable Master Shutdown?',
-      next ? 'All local relays will be turned OFF' : 'Relays will be unlocked and restored.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Confirm', style: next ? 'destructive' : 'default', onPress: async () => {
-          setData(p => ({ ...p, shutdownEnabled: next }));
-          if (!offline) setMasterShutdown(next);
-        }},
-      ]
-    );
-  }, [offline]);
-
-  const locked = data.masterLockEnabled;
-  const shutdown = data.shutdownEnabled;
   const activeRelays = data.relays.filter(r => r.isOn).length;
 
   return (
@@ -128,55 +118,6 @@ export default function MainBoardScreen() {
         ))}
       </View>
 
-      <Text style={styles.sectionTitle}>SYSTEM CONTROLS</Text>
-      <TouchableOpacity
-        style={[styles.controlCard, { borderColor: locked ? colors.warning + '55' : colors.border, backgroundColor: locked ? colors.warning + '0a' : colors.card }]}
-        onPress={() => handleMasterLock(!locked)}
-        activeOpacity={0.8}
-      >
-        <View style={[styles.controlIcon, { backgroundColor: locked ? colors.warning + '22' : colors.secondary }]}>
-          <Icon name={locked ? 'lock' : 'unlock'} size={20} color={locked ? colors.warning : colors.mutedForeground} />
-        </View>
-        <View style={styles.flex1}>
-          <Text style={[styles.controlTitle, { color: locked ? colors.warning : colors.foreground }]}>
-            Master Lock {locked ? 'ON' : 'OFF'}
-          </Text>
-          <Text style={styles.controlDesc}>
-            {locked ? 'Physical switches disabled — app control only' : 'Physical switches enabled'}
-          </Text>
-        </View>
-        <Switch
-          value={locked}
-          onValueChange={handleMasterLock}
-          trackColor={{ false: colors.border, true: colors.warning + '88' }}
-          thumbColor={locked ? colors.warning : colors.mutedForeground}
-        />
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={[styles.controlCard, { borderColor: shutdown ? colors.destructive + '55' : colors.border, backgroundColor: shutdown ? colors.destructive + '0a' : colors.card }]}
-        onPress={() => handleShutdown(!shutdown)}
-        activeOpacity={0.8}
-      >
-        <View style={[styles.controlIcon, { backgroundColor: shutdown ? colors.destructive + '22' : colors.secondary }]}>
-          <Icon name="power" size={20} color={shutdown ? colors.destructive : colors.mutedForeground} />
-        </View>
-        <View style={styles.flex1}>
-          <Text style={[styles.controlTitle, { color: shutdown ? colors.destructive : colors.foreground }]}>
-            Master Shutdown {shutdown ? 'ON' : 'OFF'}
-          </Text>
-          <Text style={styles.controlDesc}>
-            {shutdown ? 'All relays OFF - System shutdown' : 'System running normally'}
-          </Text>
-        </View>
-        <Switch
-          value={shutdown}
-          onValueChange={handleShutdown}
-          trackColor={{ false: colors.border, true: colors.destructive + '88' }}
-          thumbColor={shutdown ? colors.destructive : colors.mutedForeground}
-        />
-      </TouchableOpacity>
-
       <Text style={styles.sectionTitle}>RELAY CONTROLS</Text>
 
       {data.relays.length === 0 ? (
@@ -188,26 +129,37 @@ export default function MainBoardScreen() {
       ) : (
         <View style={styles.relayList}>
           {data.relays.map(r => {
+            const isLocked = (r as any).locked ?? false;
             const statusColor = r.status === 'error' ? colors.destructive : r.status === 'offline' ? colors.mutedForeground : r.isOn ? colors.success : colors.border;
+            const cardBorderColor = isLocked ? colors.warning + '55' : r.isOn ? statusColor + '44' : colors.border;
+            const indicatorColor = isLocked ? colors.warning : statusColor;
             return (
-              <View key={r.id} style={[styles.relayCard, { borderColor: r.isOn ? statusColor + '44' : colors.border }]}>
-                <View style={[styles.relayIndicator, { backgroundColor: statusColor }]} />
+              <View key={r.id} style={[styles.relayCard, { borderColor: cardBorderColor }]}>
+                <View style={[styles.relayIndicator, { backgroundColor: indicatorColor }]} />
                 <View style={styles.relayInfo}>
-                  <Text style={styles.relayNum}>Relay {r.number}</Text>
+                  <Text style={styles.relayNum}>RELAY {r.number}</Text>
                   <Text style={styles.relayName} numberOfLines={1}>{r.name}</Text>
                   <View style={styles.relayMeta}>
                     <Text style={styles.relayMetaText}>{r.current.toFixed(2)} A</Text>
-                    <View style={[styles.relayStatusTag, { backgroundColor: statusColor + '22' }]}>
-                      <Text style={[styles.relayStatusText, { color: statusColor }]}>
-                        {r.status === 'normal' ? (r.isOn ? 'ON' : 'OFF') : r.status.toUpperCase()}
+                    <View style={[styles.relayStatusTag, { backgroundColor: indicatorColor + '22' }]}>
+                      <Text style={[styles.relayStatusText, { color: indicatorColor }]}>
+                        {isLocked ? 'LOCKED' : r.status === 'normal' ? (r.isOn ? 'ON' : 'OFF') : r.status.toUpperCase()}
                       </Text>
                     </View>
                   </View>
                 </View>
+                {/* Individual Lock Button */}
+                <TouchableOpacity
+                  onPress={() => handleRelayLock(r.id, isLocked)}
+                  style={[styles.lockBtn, { backgroundColor: isLocked ? colors.warning + '22' : colors.secondary }]}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Icon name={isLocked ? 'lock' : 'unlock'} size={14} color={isLocked ? colors.warning : colors.mutedForeground} />
+                </TouchableOpacity>
                 <Switch
                   value={r.isOn}
                   onValueChange={(next) => handleToggle(r.id, next ? 'on' : 'off')}
-                  disabled={locked || shutdown || r.status === 'offline'}
+                  disabled={isLocked || r.status === 'offline'}
                   trackColor={{ false: colors.border, true: colors.primary + '88' }}
                   thumbColor={r.isOn ? colors.primary : colors.mutedForeground}
                 />
@@ -235,10 +187,6 @@ const styles = StyleSheet.create({
   statVal: { fontSize: 18, fontWeight: '800' },
   statLabel: { fontSize: 11, color: colors.mutedForeground },
   sectionTitle: { color: colors.mutedForeground, fontSize: 10, fontWeight: '700', letterSpacing: 1.5, marginTop: 4 },
-  controlCard: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 16, borderWidth: 1, padding: 16 },
-  controlIcon: { width: 46, height: 46, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  controlTitle: { fontSize: 15, fontWeight: '700', marginBottom: 2 },
-  controlDesc: { color: colors.mutedForeground, fontSize: 12 },
   relayList: { gap: 8 },
   relayCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.card, borderRadius: 14, borderWidth: 1, padding: 14 },
   relayIndicator: { width: 4, height: 44, borderRadius: 2 },
@@ -249,6 +197,7 @@ const styles = StyleSheet.create({
   relayMetaText: { color: colors.mutedForeground, fontSize: 12 },
   relayStatusTag: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
   relayStatusText: { fontSize: 10, fontWeight: '700' },
+  lockBtn: { width: 34, height: 34, borderRadius: 9, alignItems: 'center', justifyContent: 'center', marginRight: 4 },
   emptyCard: { alignItems: 'center', gap: 8, paddingVertical: 48, backgroundColor: colors.card, borderRadius: 16, borderWidth: 1, borderColor: colors.border },
   emptyTitle: { color: colors.foreground, fontSize: 16, fontWeight: '600' },
   emptyDesc: { color: colors.mutedForeground, fontSize: 13, textAlign: 'center' },

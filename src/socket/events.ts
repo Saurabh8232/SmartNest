@@ -11,6 +11,7 @@ export const SOCKET_EVENTS = {
   // Global system control events
   masterUnlockAll: 'system:master-unlock-all',
   masterShutdown: 'system:master-shutdown',
+  shutdownAll: 'system:shutdown-all',          // ← NEW (one-shot, no persistent state)
 
   devicesRequest: 'devices:request',
   devicesUpdate: 'devices:update',
@@ -37,7 +38,5 @@ export const SOCKET_EVENTS = {
   alertsRequest: 'alerts:request',
   alertsUpdate: 'alerts:update',
   alertResolve: 'alerts:resolve',
-  
+
 } as const;
-
-

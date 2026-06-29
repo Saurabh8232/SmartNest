@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, RefreshControl, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -7,9 +8,9 @@ import {
   controlDigitalRelay,
   DashboardData,
   DigitalBoardStatus,
+  lockDigitalRelay,
   requestDashboard,
   requestDigitalBoard,
-  setDigitalMasterLock,
   subscribeToConnection,
   subscribeToDashboard,
   subscribeToDigitalBoard,
@@ -17,12 +18,17 @@ import {
 import MiniChart from '../components/MiniChart';
 import colors from '../constants/colors';
 
-const DEFAULT_DATA: DigitalBoardStatus = { relays: [], masterLockEnabled: false, totalCurrent: 0 };const DEFAULT_DASH: DashboardData = {
+const CACHE_KEY = '@smartnest_digitalboard_v1';
+
+const DEFAULT_DATA: DigitalBoardStatus = { relays: [], masterLockEnabled: false, totalCurrent: 0 };
+const DEFAULT_DASH: DashboardData = {
   systemOnline: false, totalDevices: 0, activeRelays: 0, totalCurrent: 0,
   voltage: 0, current: 0, power: 0, energy: 0, frequency: 0, powerFactor: 0,
   voltageHistory: [], powerHistory: [], energyHistory: [], currentHistory: [],
   lastUpdated: new Date().toISOString(),
 };
+
+const paramCardStyle = (color: string) => [styles.paramCard, { borderTopColor: color + '99', borderTopWidth: 2 }];
 
 export default function DigitalBoardScreen() {
   const insets = useSafeAreaInsets();
@@ -35,6 +41,14 @@ export default function DigitalBoardScreen() {
   const [offline, setOffline] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
+  // ── Load cached data on app start ──────────────────────────────
+  useEffect(() => {
+    AsyncStorage.getItem(CACHE_KEY).then(raw => {
+      if (!raw) return;
+      try { setBoard(JSON.parse(raw)); } catch {}
+    });
+  }, []);
+
   const load = useCallback(() => {
     requestDigitalBoard();
     requestDashboard();
@@ -45,6 +59,8 @@ export default function DigitalBoardScreen() {
       setBoard(status);
       setOffline(false);
       setRefreshing(false);
+      // ── Save to cache ─────────────────────────────────────────
+      AsyncStorage.setItem(CACHE_KEY, JSON.stringify(status)).catch(() => {});
     });
     const removeDashboard = subscribeToDashboard(setDash);
     const removeConnection = subscribeToConnection(
@@ -55,29 +71,37 @@ export default function DigitalBoardScreen() {
   }, [load]);
 
   const relay = board.relays[0] ?? null;
-  const locked = board.masterLockEnabled;
-
-  const handleMasterLock = useCallback((next: boolean) => {
-    Alert.alert(
-      next ? 'Enable Master Lock?' : 'Disable Master Lock?',
-      next ? 'Digital Board relay will be disabled. App control only.' : 'Relay control will be re-enabled.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Confirm', onPress: () => {
-          setBoard(prev => ({ ...prev, masterLockEnabled: next }));
-          if (!offline) setDigitalMasterLock(next);
-        }},
-      ]
-    );
-  }, [offline]);
+  const isRelayLocked = (relay as any)?.locked ?? false;
 
   const handleToggle = useCallback((next: boolean) => {
-    if (!relay || locked) return;
+    if (!relay || isRelayLocked) return;
     const action = next ? 'on' : 'off';
     setBoard(prev => ({ ...prev, relays: prev.relays.map((r, i) => i === 0 ? { ...r, isOn: next } : r) }));
     if (offline) return;
     controlDigitalRelay(relay.id, action);
-  }, [relay, locked, offline]);
+  }, [relay, isRelayLocked, offline]);
+
+  const handleRelayLock = useCallback(() => {
+    if (!relay) return;
+    const next = !isRelayLocked;
+    Alert.alert(
+      next ? 'Lock Relay?' : 'Unlock Relay?',
+      next ? 'This relay will be locked. Toggle control will be disabled.' : 'This relay will be unlocked and can be controlled again.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: next ? 'Lock' : 'Unlock',
+          onPress: () => {
+            setBoard(prev => ({
+              ...prev,
+              relays: prev.relays.map((r, i) => i === 0 ? { ...r, locked: next } : r),
+            }));
+            if (!offline) lockDigitalRelay(relay.id, next);
+          },
+        },
+      ]
+    );
+  }, [relay, isRelayLocked, offline]);
 
   const params = [
     { label: 'Voltage', value: `${dash.voltage.toFixed(1)}`, unit: 'V', icon: 'zap', color: colors.warning },
@@ -91,6 +115,8 @@ export default function DigitalBoardScreen() {
     relay.status === 'error' ? colors.destructive :
     relay.status === 'offline' ? colors.mutedForeground :
     relay.isOn ? colors.success : colors.border;
+
+  const activeIndicatorColor = isRelayLocked ? colors.warning : relayStatusColor;
 
   return (
     <ScrollView
@@ -147,32 +173,6 @@ export default function DigitalBoardScreen() {
         </>
       )}
 
-      {/* Master Lock */}
-      <Text style={styles.sectionTitle}>SYSTEM CONTROLS</Text>
-      <TouchableOpacity
-        style={[styles.controlCard, { borderColor: locked ? colors.warning + '55' : colors.border, backgroundColor: locked ? colors.warning + '0a' : colors.card }]}
-        onPress={() => handleMasterLock(!locked)}
-        activeOpacity={0.8}
-      >
-        <View style={[styles.controlIcon, { backgroundColor: locked ? colors.warning + '22' : colors.secondary }]}>
-          <Icon name={locked ? 'lock' : 'unlock'} size={20} color={locked ? colors.warning : colors.mutedForeground} />
-        </View>
-        <View style={styles.flex1}>
-          <Text style={[styles.controlTitle, { color: locked ? colors.warning : colors.foreground }]}>
-            Master Lock {locked ? 'ON' : 'OFF'}
-          </Text>
-          <Text style={styles.controlDesc}>
-            {locked ? 'Relay disabled — app control only' : 'Relay control enabled'}
-          </Text>
-        </View>
-        <Switch
-          value={locked}
-          onValueChange={handleMasterLock}
-          trackColor={{ false: colors.border, true: colors.warning + '88' }}
-          thumbColor={locked ? colors.warning : colors.mutedForeground}
-        />
-      </TouchableOpacity>
-
       {/* Relay Control */}
       <Text style={styles.sectionTitle}>RELAY CONTROL</Text>
 
@@ -183,24 +183,32 @@ export default function DigitalBoardScreen() {
           <Text style={styles.emptyDesc}>{offline ? 'Check your server connection' : 'Digital Board relay will appear here'}</Text>
         </View>
       ) : (
-        <View style={[styles.relayCard, { borderColor: relay.isOn ? relayStatusColor + '55' : colors.border }]}>
+        <View style={[styles.relayCard, { borderColor: isRelayLocked ? colors.warning + '55' : relay.isOn ? relayStatusColor + '55' : colors.border }]}>
           <View style={styles.relayTop}>
-            <View style={[styles.relayIconWrap, { backgroundColor: relayStatusColor + '22' }]}>
-              <Icon name="toggle-right" size={22} color={relayStatusColor} />
+            <View style={[styles.relayIconWrap, { backgroundColor: activeIndicatorColor + '22' }]}>
+              <Icon name="toggle-right" size={22} color={activeIndicatorColor} />
             </View>
             <View style={styles.flex1}>
               <Text style={styles.relayName}>{relay.name || 'Digital Board Relay'}</Text>
               <View style={styles.relayStatusRow}>
-                <View style={[styles.relayDot, { backgroundColor: relayStatusColor }]} />
-                <Text style={[styles.relayStatusText, { color: relayStatusColor }]}>
-                  {locked ? 'LOCKED' : relay.status === 'normal' ? (relay.isOn ? 'ON — Active' : 'OFF — Idle') : relay.status.toUpperCase()}
+                <View style={[styles.relayDot, { backgroundColor: activeIndicatorColor }]} />
+                <Text style={[styles.relayStatusText, { color: activeIndicatorColor }]}>
+                  {isRelayLocked ? 'LOCKED' : relay.status === 'normal' ? (relay.isOn ? 'ON — Active' : 'OFF — Idle') : relay.status.toUpperCase()}
                 </Text>
               </View>
             </View>
+            {/* Individual Lock Button */}
+            <TouchableOpacity
+              onPress={handleRelayLock}
+              style={[styles.lockBtn, { backgroundColor: isRelayLocked ? colors.warning + '22' : colors.secondary }]}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Icon name={isRelayLocked ? 'lock' : 'unlock'} size={14} color={isRelayLocked ? colors.warning : colors.mutedForeground} />
+            </TouchableOpacity>
             <Switch
               value={relay.isOn}
               onValueChange={handleToggle}
-              disabled={locked || relay.status === 'offline'}
+              disabled={isRelayLocked || relay.status === 'offline'}
               trackColor={{ false: colors.border, true: colors.success + '88' }}
               thumbColor={relay.isOn ? colors.success : colors.mutedForeground}
             />
@@ -219,7 +227,7 @@ export default function DigitalBoardScreen() {
             <View style={styles.metricDivider} />
             <View style={styles.relayMetric}>
               <Text style={styles.relayMetricLabel}>Status</Text>
-              <Text style={[styles.relayMetricValue, { color: relayStatusColor }]}>{locked ? 'Locked' : relay.isOn ? 'Running' : 'Standby'}</Text>
+              <Text style={[styles.relayMetricValue, { color: activeIndicatorColor }]}>{isRelayLocked ? 'Locked' : relay.isOn ? 'Running' : 'Standby'}</Text>
             </View>
           </View>
         </View>
@@ -257,29 +265,23 @@ const styles = StyleSheet.create({
   chartDot: { width: 8, height: 8, borderRadius: 4 },
   chartTitle: { color: colors.foreground, fontSize: 14, fontWeight: '600' },
   chartValue: { fontSize: 18, fontWeight: '800' },
-  controlCard: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 16, borderWidth: 1, padding: 16 },
-  controlIcon: { width: 46, height: 46, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  controlTitle: { fontSize: 15, fontWeight: '700', marginBottom: 2 },
-  controlDesc: { color: colors.mutedForeground, fontSize: 12 },
-  relayCard: { backgroundColor: colors.card, borderRadius: 16, borderWidth: 1, padding: 16, gap: 14 },
+  relayCard: { backgroundColor: colors.card, borderRadius: 16, borderWidth: 1, padding: 16, gap: 16 },
   relayTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  relayIconWrap: { width: 48, height: 48, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+  relayIconWrap: { width: 46, height: 46, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   relayName: { color: colors.foreground, fontSize: 15, fontWeight: '700' },
   relayStatusRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 },
-  relayDot: { width: 7, height: 7, borderRadius: 3.5 },
+  relayDot: { width: 7, height: 7, borderRadius: 4 },
   relayStatusText: { fontSize: 12, fontWeight: '600' },
-  relayMetrics: { flexDirection: 'row', backgroundColor: colors.secondary, borderRadius: 12, padding: 14, alignItems: 'center' },
-  relayMetric: { flex: 1, alignItems: 'center' },
-  relayMetricLabel: { fontSize: 10, color: colors.mutedForeground, fontWeight: '600', marginBottom: 4 },
+  lockBtn: { width: 34, height: 34, borderRadius: 9, alignItems: 'center', justifyContent: 'center', marginRight: 4 },
+  relayMetrics: { flexDirection: 'row', backgroundColor: colors.secondary, borderRadius: 12, padding: 12 },
+  relayMetric: { flex: 1, alignItems: 'center', gap: 4 },
+  relayMetricLabel: { fontSize: 10, color: colors.mutedForeground, fontWeight: '600' },
   relayMetricValue: { fontSize: 16, fontWeight: '800' },
-  metricDivider: { width: 1, height: 32, backgroundColor: colors.border },
+  metricDivider: { width: 1, backgroundColor: colors.border },
   emptyCard: { alignItems: 'center', gap: 8, paddingVertical: 48, backgroundColor: colors.card, borderRadius: 16, borderWidth: 1, borderColor: colors.border },
   emptyTitle: { color: colors.foreground, fontSize: 16, fontWeight: '600' },
   emptyDesc: { color: colors.mutedForeground, fontSize: 13, textAlign: 'center' },
-  offlineNote: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.warning + '11', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: colors.warning + '33' },
+  offlineNote: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.warning + '11', borderRadius: 10, padding: 12, borderWidth: 1, borderColor: colors.warning + '33' },
   offlineNoteText: { flex: 1, color: colors.warning, fontSize: 12 },
   flex1: { flex: 1 },
-  secondary: { backgroundColor: colors.secondary },
 });
-
-const paramCardStyle = (color: string) => [styles.paramCard, { borderTopColor: color, borderTopWidth: 2 }];

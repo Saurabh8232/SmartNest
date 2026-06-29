@@ -30,6 +30,7 @@ export interface Relay {
   isOn: boolean;
   current: number;
   status: 'normal' | 'error' | 'offline';
+  locked: boolean;  // ← NEW
 }
 
 export interface MainBoardStatus {
@@ -46,13 +47,14 @@ export interface DigitalRelay {
   current: number;
   power: number;
   status: 'normal' | 'error' | 'offline';
-  switchState: 'pressed' | 'released';
+  switchState: 'pressed' | 'released';  // ← NEW
+  locked: boolean;                       // ← NEW
 }
 
 export interface DigitalBoardStatus {
   masterLockEnabled: boolean;
   relays: DigitalRelay[];
-  totalCurrent: number;
+  totalCurrent: number;  // ← NEW
 }
 
 export interface AcStatus {

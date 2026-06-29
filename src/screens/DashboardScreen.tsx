@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { useEffect, useState, useCallback } from 'react';
 import {
+  Alert,
   RefreshControl, ScrollView, StyleSheet,
   Text, TouchableOpacity, View, useWindowDimensions,
 } from 'react-native';
@@ -10,6 +11,8 @@ import Icon from 'react-native-vector-icons/Feather';
 import {
   Alert as AlertType,
   DashboardData,
+  masterUnlockAll,
+  shutdownAll,
   requestDashboard,
   requestDashboardAlerts,
   subscribeToConnection,
@@ -118,6 +121,34 @@ export default function DashboardScreen() {
     };
   }, [load]);
 
+  // ── Master Unlock All ────────────────────────────────────────
+  const handleMasterUnlock = useCallback(() => {
+    Alert.alert(
+      'Master Unlock?',
+      'All locked relays on Main Board and Digital Board will be unlocked.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Unlock All', onPress: () => { masterUnlockAll(); } },
+      ]
+    );
+  }, []);
+
+  // ── Master Shutdown (one-shot) ───────────────────────────────
+  const handleMasterShutdown = useCallback(() => {
+    Alert.alert(
+      'Master Shutdown?',
+      'All relays on Main Board and Digital Board will be turned OFF immediately. Relay controls continue working normally after shutdown.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Shutdown All',
+          style: 'destructive',
+          onPress: () => { shutdownAll(); },
+        },
+      ]
+    );
+  }, []);
+
   const updatedTime = new Date(data.lastUpdated).toLocaleTimeString([], {
     hour: '2-digit', minute: '2-digit',
   });
@@ -147,6 +178,7 @@ export default function DashboardScreen() {
       contentContainerStyle={[styles.content, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 76 }]}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.primary} />}
     >
+      {/* Header */}
       <View style={styles.header}>
         <View>
           <Text style={styles.title}>Dashboard</Text>
@@ -160,6 +192,7 @@ export default function DashboardScreen() {
         </View>
       </View>
 
+      {/* Live Parameters */}
       <Text style={styles.sectionLabel}>LIVE PARAMETERS</Text>
       <View style={styles.cardsGrid}>
         {paramCards.map(c => (
@@ -177,6 +210,7 @@ export default function DashboardScreen() {
         ))}
       </View>
 
+      {/* Trend Graphs */}
       <Text style={styles.sectionLabel}>TREND GRAPHS</Text>
       <View style={styles.chartsRow}>
         <View style={[styles.chartCard, { width: chartW }]}>
@@ -206,6 +240,38 @@ export default function DashboardScreen() {
         </View>
       </View>
 
+      {/* ── GLOBAL SYSTEM CONTROLS ─────────────────────────────── */}
+      <Text style={styles.sectionLabel}>GLOBAL SYSTEM CONTROLS</Text>
+      <View style={styles.globalRow}>
+        {/* Master Unlock All */}
+        <TouchableOpacity
+          onPress={handleMasterUnlock}
+          activeOpacity={0.8}
+          style={styles.unlockBtn}
+        >
+          <View style={[styles.globalIcon, { backgroundColor: colors.success + '22' }]}>
+            <Icon name="unlock" size={20} color={colors.success} />
+          </View>
+          <Text style={[styles.globalTitle, { color: colors.success }]}>Unlock All</Text>
+          <Text style={styles.globalDesc}>Release all locked relays</Text>
+        </TouchableOpacity>
+
+        {/* Master Shutdown */}
+        <TouchableOpacity
+          onPress={handleMasterShutdown}
+          activeOpacity={0.8}
+          style={styles.shutdownBtn}
+        >
+          <View style={[styles.globalIcon, { backgroundColor: colors.destructive + '22' }]}>
+            <Icon name="power" size={20} color={colors.destructive} />
+          </View>
+          <Text style={[styles.globalTitle, { color: colors.destructive }]}>Shutdown</Text>
+          <Text style={styles.globalDesc}>Turn off all relays</Text>
+        </TouchableOpacity>
+      </View>
+      {/* ── END GLOBAL CONTROLS ────────────────────────────────── */}
+
+      {/* Recent Alerts */}
       <View style={styles.alertsHeader}>
         <Text style={styles.sectionLabel}>RECENT ALERTS</Text>
         <TouchableOpacity onPress={() => navigation.navigate('AllAlerts')}>
@@ -268,28 +334,36 @@ const styles = StyleSheet.create({
   cardsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   paramCard: { backgroundColor: colors.card, borderRadius: 14, borderWidth: 1, borderColor: colors.border, padding: 13, gap: 8, borderTopWidth: 2 },
   paramTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  paramIconWrap: { width: 26, height: 26, borderRadius: 7, alignItems: 'center', justifyContent: 'center' },
+  paramIconWrap: { width: 24, height: 24, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
   paramLabel: { color: colors.mutedForeground, fontSize: 11, fontWeight: '600', flex: 1 },
-  paramValue: { fontSize: 26, fontWeight: '800', letterSpacing: -0.5 },
-  paramUnit: { fontSize: 13, fontWeight: '600' },
+  paramValue: { fontSize: 20, fontWeight: '800' },
+  paramUnit: { fontSize: 12, fontWeight: '400' },
   chartsRow: { flexDirection: 'row', gap: 10 },
-  chartCard: { backgroundColor: colors.card, borderRadius: 14, borderWidth: 1, borderColor: colors.border, padding: 12, gap: 4, overflow: 'hidden' },
-  chartTitle: { color: colors.foreground, fontSize: 12, fontWeight: '700' },
-  chartSub: { color: colors.mutedForeground, fontSize: 10, marginBottom: 4 },
-  chartCurrent: { fontSize: 14, fontWeight: '800', marginTop: 6 },
-  noChartData: { alignItems: 'center', justifyContent: 'center', backgroundColor: colors.secondary, borderRadius: 8, height: 56 },
+  chartCard: { backgroundColor: colors.card, borderRadius: 14, borderWidth: 1, borderColor: colors.border, padding: 12, gap: 4 },
+  chartTitle: { color: colors.foreground, fontSize: 13, fontWeight: '700' },
+  chartSub: { color: colors.mutedForeground, fontSize: 10 },
+  chartCurrent: { fontSize: 14, fontWeight: '800', marginTop: 4 },
+  noChartData: { height: 56, alignItems: 'center', justifyContent: 'center' },
   noChartText: { color: colors.mutedForeground, fontSize: 11 },
-  flex1: { flex: 1 },
+  // ── Global system controls ──────────────────────────────────
+  globalRow: { flexDirection: 'row', gap: 10 },
+  unlockBtn: { flex: 1, backgroundColor: colors.card, borderRadius: 14, borderWidth: 1, borderColor: colors.success + '44', padding: 14, gap: 6, alignItems: 'center' },
+  shutdownBtn: { flex: 1, backgroundColor: colors.card, borderRadius: 14, borderWidth: 1, borderColor: colors.destructive + '44', padding: 14, gap: 6, alignItems: 'center' },
+  globalIcon: { width: 40, height: 40, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  globalTitle: { fontSize: 14, fontWeight: '700' },
+  globalDesc: { fontSize: 10, color: colors.mutedForeground, textAlign: 'center' },
+  // ── Alerts ──────────────────────────────────────────────────
   alertsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   viewAllLink: { fontSize: 12, fontWeight: '600' },
-  noAlerts: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.success + '11', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: colors.success + '33' },
-  noAlertsText: { flex: 1, color: colors.success, fontSize: 12 },
+  noAlerts: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.success + '11', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: colors.success + '22' },
+  noAlertsText: { color: colors.mutedForeground, fontSize: 13, flex: 1 },
   alertList: { gap: 8 },
   alertRow: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.card, borderRadius: 12, borderWidth: 1, borderColor: colors.border, borderLeftWidth: 3, padding: 12 },
   alertTitle: { color: colors.foreground, fontSize: 13, fontWeight: '600' },
   alertMeta: { color: colors.mutedForeground, fontSize: 11, marginTop: 2 },
-  severityTag: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
-  severityText: { fontSize: 9, fontWeight: '800', letterSpacing: 0.5 },
-  viewAllAlertsBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1, borderColor: colors.primary + '55', borderRadius: 14, paddingVertical: 13, backgroundColor: colors.primary + '10' },
-  viewAllAlertsBtnText: { color: colors.primary, fontSize: 14, fontWeight: '700' },
+  severityTag: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  severityText: { fontSize: 10, fontWeight: '700' },
+  viewAllAlertsBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: colors.card, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: 12 },
+  viewAllAlertsBtnText: { color: colors.primary, fontSize: 13, fontWeight: '600' },
+  flex1: { flex: 1 },
 });
