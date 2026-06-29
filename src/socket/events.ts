@@ -8,6 +8,10 @@ export const SOCKET_EVENTS = {
   dashboardAlertsRequest: 'dashboard-alerts:request',
   dashboardAlertsUpdate: 'dashboard-alerts:update',
 
+  // Global system control events
+  masterUnlockAll: 'system:master-unlock-all',
+  masterShutdown: 'system:master-shutdown',
+
   devicesRequest: 'devices:request',
   devicesUpdate: 'devices:update',
 
@@ -16,6 +20,10 @@ export const SOCKET_EVENTS = {
   mainRelayControl: 'main-board:relay-control',
   masterLockControl: 'main-board:master-lock',
   masterShutdownControl: 'main-board:master-shutdown',
+
+  // Individual Relay lock
+  mainRelayLock: 'main-board:relay-lock',
+  digitalRelayLock: 'digital-board:relay-lock',
 
   digitalBoardRequest: 'digital-board:request',
   digitalBoardUpdate: 'digital-board:update',
@@ -29,4 +37,7 @@ export const SOCKET_EVENTS = {
   alertsRequest: 'alerts:request',
   alertsUpdate: 'alerts:update',
   alertResolve: 'alerts:resolve',
+  
 } as const;
+
+

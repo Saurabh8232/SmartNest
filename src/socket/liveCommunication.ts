@@ -45,6 +45,23 @@ export const setMasterLock = (enabled: boolean) =>
   socketManager.emit(SOCKET_EVENTS.masterLockControl, { enabled });
 export const setMasterShutdown = (enabled: boolean) =>
   socketManager.emit(SOCKET_EVENTS.masterShutdownControl, { enabled });
+// ── Global controls ──────────────────────────────────────────────────────────
+export const masterUnlockAll = () => {
+  socketManager.emit(SOCKET_EVENTS.masterUnlockAll);
+};
+
+export const masterShutdownAll = (enabled: boolean) => {
+  socketManager.emit(SOCKET_EVENTS.masterShutdown, { enabled });
+};
+
+// ── Individual relay lock ────────────────────────────────────────────────────
+export const lockMainRelay = (relayId: string, locked: boolean) => {
+  socketManager.emit(SOCKET_EVENTS.mainRelayLock, { relayId, locked });
+};
+
+export const lockDigitalRelay = (relayId: string, locked: boolean) => {
+  socketManager.emit(SOCKET_EVENTS.digitalRelayLock, { relayId, locked });
+};
 export const subscribeToDigitalBoard = (
   listener: (status: DigitalBoardStatus) => void,
 ) =>
