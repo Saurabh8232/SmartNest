@@ -18,7 +18,16 @@ import {
 import colors from '../constants/colors';
 
 const CACHE_KEY = '@smartnest_mainboard_v1';
-const DEFAULT_DATA: MainBoardStatus = { masterLockEnabled: false, shutdownEnabled: false, totalCurrent: 0, relays: [] };
+
+// mainCurrent matches hardware: main_current (ACS712 for relays 1-6)
+// mainEnergyKwh matches hardware: main_energy_kwh (cumulative energy relays 1-6)
+const DEFAULT_DATA: MainBoardStatus = {
+  masterLockEnabled: false,
+  shutdownEnabled: false,
+  mainCurrent: 0,
+  mainEnergyKwh: 0,
+  relays: [],
+};
 
 export default function MainBoardScreen() {
   const insets = useSafeAreaInsets();
@@ -46,7 +55,6 @@ export default function MainBoardScreen() {
       setData(status);
       setOffline(false);
       setRefreshing(false);
-      // ── Save to cache ─────────────────────────────────────────
       AsyncStorage.setItem(CACHE_KEY, JSON.stringify(status)).catch(() => {});
     });
     const removeConnection = subscribeToConnection(
@@ -57,7 +65,8 @@ export default function MainBoardScreen() {
       setData(prev => {
         const next = {
           ...prev,
-          totalCurrent: 0,
+          mainCurrent: 0,
+          mainEnergyKwh: prev.mainEnergyKwh, // energy is cumulative — keep it, don't reset
           relays: prev.relays.map(relay => ({
             ...relay,
             isOn: false,
@@ -85,7 +94,9 @@ export default function MainBoardScreen() {
     const next = !currentLocked;
     Alert.alert(
       next ? 'Lock Relay?' : 'Unlock Relay?',
-      next ? 'This relay will be locked. Toggle control will be disabled.' : 'This relay will be unlocked and can be controlled again.',
+      next
+        ? 'This relay will be locked. Toggle control will be disabled.'
+        : 'This relay will be unlocked and can be controlled again.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -98,7 +109,7 @@ export default function MainBoardScreen() {
             if (!offline) lockMainRelay(id, next);
           },
         },
-      ]
+      ],
     );
   }, [offline]);
 
@@ -107,7 +118,6 @@ export default function MainBoardScreen() {
       Alert.alert('System Offline', 'Connect to the backend before rebooting the system.');
       return;
     }
-
     Alert.alert(
       'Reboot System?',
       'The backend will send a reboot command to the hardware for the full system.',
@@ -131,14 +141,19 @@ export default function MainBoardScreen() {
     controlMainLightingGroup(action);
   }, [offline]);
 
-  const activeRelays = data.relays.filter(r => r.isOn).length;
-
   return (
     <ScrollView
       style={styles.scroll}
       contentContainerStyle={[styles.content, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 76 }]}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.primary} />}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={() => { setRefreshing(true); load(); }}
+          tintColor={colors.primary}
+        />
+      }
     >
+      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Icon name="arrow-left" size={18} color={colors.primary} />
@@ -155,10 +170,11 @@ export default function MainBoardScreen() {
         )}
       </View>
 
+      {/* Stats Row — main_current and main_energy_kwh for relays 1-6 only */}
       <View style={styles.statsRow}>
         {[
-          { label: 'Total Current', val: `${data.totalCurrent.toFixed(2)} A`, color: colors.primary, icon: 'activity' },
-          { label: 'Active Relays', val: `${activeRelays} / ${data.relays.length}`, color: colors.accent, icon: 'toggle-right' },
+          { label: 'Main Current',  val: `${data.mainCurrent.toFixed(2)} A`,    color: colors.primary, icon: 'activity'          },
+          { label: 'Main Energy',   val: `${data.mainEnergyKwh.toFixed(3)} kWh`, color: colors.success, icon: 'battery-charging'  },
         ].map(s => (
           <View key={s.label} style={styles.statCard}>
             <View style={[styles.statIcon, { backgroundColor: s.color + '22' }]}>
@@ -170,6 +186,7 @@ export default function MainBoardScreen() {
         ))}
       </View>
 
+      {/* Reboot Button */}
       <TouchableOpacity
         onPress={handleReboot}
         activeOpacity={0.85}
@@ -184,6 +201,7 @@ export default function MainBoardScreen() {
         </View>
       </TouchableOpacity>
 
+      {/* Lighting Group */}
       <View style={styles.groupCard}>
         <View style={styles.groupHeader}>
           <View style={styles.groupIcon}>
@@ -226,9 +244,13 @@ export default function MainBoardScreen() {
         <View style={styles.relayList}>
           {data.relays.map(r => {
             const isLocked = (r as any).locked ?? false;
-            const statusColor = r.status === 'error' ? colors.destructive : r.status === 'offline' ? colors.mutedForeground : r.isOn ? colors.success : colors.border;
-            const cardBorderColor = isLocked ? colors.warning + '55' : r.isOn ? statusColor + '44' : colors.border;
-            const indicatorColor = isLocked ? colors.warning : statusColor;
+            const statusColor =
+              r.status === 'error'   ? colors.destructive :
+              r.status === 'offline' ? colors.mutedForeground :
+              r.isOn                 ? colors.success :
+                                       colors.border;
+            const cardBorderColor  = isLocked ? colors.warning + '55' : r.isOn ? statusColor + '44' : colors.border;
+            const indicatorColor   = isLocked ? colors.warning : statusColor;
             return (
               <View key={r.id} style={[styles.relayCard, { borderColor: cardBorderColor }]}>
                 <View style={[styles.relayIndicator, { backgroundColor: indicatorColor }]} />
@@ -244,7 +266,6 @@ export default function MainBoardScreen() {
                     </View>
                   </View>
                 </View>
-                {/* Individual Lock Button */}
                 <TouchableOpacity
                   onPress={() => handleRelayLock(r.id, isLocked)}
                   style={[styles.lockBtn, { backgroundColor: isLocked ? colors.warning + '22' : colors.secondary }]}
@@ -254,7 +275,7 @@ export default function MainBoardScreen() {
                 </TouchableOpacity>
                 <Switch
                   value={r.isOn}
-                  onValueChange={(next) => handleToggle(r.id, next ? 'on' : 'off')}
+                  onValueChange={next => handleToggle(r.id, next ? 'on' : 'off')}
                   disabled={isLocked || r.status === 'offline'}
                   trackColor={{ false: colors.border, true: colors.primary + '88' }}
                   thumbColor={r.isOn ? colors.primary : colors.mutedForeground}
@@ -271,6 +292,7 @@ export default function MainBoardScreen() {
 const styles = StyleSheet.create({
   scroll: { flex: 1, backgroundColor: colors.background },
   content: { paddingHorizontal: 16, gap: 12 },
+  flex1: { flex: 1 },
   header: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 2 },
   backBtn: { width: 38, height: 38, borderRadius: 10, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
   subtitle: { color: colors.mutedForeground, fontSize: 12 },
@@ -314,5 +336,4 @@ const styles = StyleSheet.create({
   emptyTitle: { color: colors.foreground, fontSize: 16, fontWeight: '600' },
   emptyDesc: { color: colors.mutedForeground, fontSize: 13, textAlign: 'center' },
   secondary: { backgroundColor: colors.secondary },
-  flex1: { flex: 1 },
 });

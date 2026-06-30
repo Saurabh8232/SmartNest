@@ -28,7 +28,8 @@ const CACHE_KEY = '@smartnest_dashboard_v1';
 
 const DEFAULT_DATA: DashboardData = {
   systemOnline: false, totalDevices: 0, activeRelays: 0, totalCurrent: 0,
-  voltage: 0, current: 0, power: 0, energy: 0, frequency: 0, powerFactor: 0,
+  voltage: 0, current: 0, power: 0, energy: 0, frequency:0,
+  powerFactor:0,
   voltageHistory: [], powerHistory: [], energyHistory: [], currentHistory: [],
   lastUpdated: new Date().toISOString(),
 };

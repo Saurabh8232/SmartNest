@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import {  ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Feather';
@@ -13,27 +14,35 @@ import {
 } from '../socket/liveCommunication';
 import colors from '../constants/colors';
 
-const MODES = [
-  { key: 'cool', label: 'Cool', icon: 'wind' },
-  { key: 'fan', label: 'Fan', icon: 'navigation' },
-  { key: 'dry', label: 'Dry', icon: 'droplet' },
-  { key: 'auto', label: 'Auto', icon: 'cpu' },
-] as const;
+const CACHE_KEY = '@smartnest_ac_v1';
 
+// Mode selector removed — hardware firmware does not support mode changes via MQTT
+// fan keys match hardware ac_set fan values exactly: auto | min | low | med | high | max
 const FAN_SPEEDS = [
-  { key: 'low', label: 'Low' },
-  { key: 'medium', label: 'Med' },
+  { key: 'min',  label: 'Min'  },
+  { key: 'low',  label: 'Low'  },
+  { key: 'med',  label: 'Med'  },
   { key: 'high', label: 'High' },
+  { key: 'max',  label: 'Max'  },
   { key: 'auto', label: 'Auto' },
 ] as const;
 
 const DEFAULT_AC: AcStatus = {
-  isOn: false, temperature: 24, mode: 'cool',
-  fanSpeed: 'auto', swingOn: false, irBlasterAvailable: true,
+  isOn: false,
+  temperature: 24,
+  fanSpeed: 'auto',
+  swingOn: false,
+  irBlasterAvailable: true,
+  acCurrent: 0,
+  acPower: 0,
+  acEnergyKwh: 0,
+  pzemCumulativeEnergyKwh: 0,
 };
 
 const MIN_TEMP = 16;
 const MAX_TEMP = 30;
+
+const paramCardStyle = (color: string) => [styles.paramCard, { borderTopColor: color + '99', borderTopWidth: 2 }];
 
 function TemperatureDial({ temperature, isOn }: { temperature: number; isOn: boolean }) {
   const SIZE = 200;
@@ -64,28 +73,11 @@ function TemperatureDial({ temperature, isOn }: { temperature: number; isOn: boo
   return (
     <View style={styles.dialCenter}>
       <Svg width={SIZE} height={SIZE}>
-        {/* Track */}
-        <Path
-          d={arc(START, START + SWEEP)}
-          stroke={colors.border}
-          strokeWidth={SW}
-          fill="none"
-          strokeLinecap="round"
-        />
-        {/* Fill */}
+        <Path d={arc(START, START + SWEEP)} stroke={colors.border} strokeWidth={SW} fill="none" strokeLinecap="round" />
         {progress > 0 && (
-          <Path
-            d={arc(START, endAngle)}
-            stroke={activeColor}
-            strokeWidth={SW}
-            fill="none"
-            strokeLinecap="round"
-          />
+          <Path d={arc(START, endAngle)} stroke={activeColor} strokeWidth={SW} fill="none" strokeLinecap="round" />
         )}
-        {/* Knob */}
-        {progress > 0 && (
-          <Circle cx={knob.x} cy={knob.y} r={7} fill={activeColor} />
-        )}
+        {progress > 0 && <Circle cx={knob.x} cy={knob.y} r={7} fill={activeColor} />}
       </Svg>
       <View style={styles.dialOverlay}>
         <Text style={[styles.dialTemp, { color: isOn ? colors.primary : colors.mutedForeground }]}>
@@ -104,63 +96,76 @@ export default function AcScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const [data, setData] = useState<AcStatus>(DEFAULT_AC);
-  // const [loading, setLoading] = useState(true);
   const [offline, setOffline] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const hasLiveDataRef = useRef(false);
 
-  const load = useCallback(() => {
-    requestAcStatus();
+  // ── Load cached data on app start ──────────────────────────────
+  useEffect(() => {
+    AsyncStorage.getItem(CACHE_KEY).then(raw => {
+      if (!raw) return;
+      try {
+        if (!hasLiveDataRef.current) setData(JSON.parse(raw));
+      } catch {}
+    });
   }, []);
+
+  const load = useCallback(() => { requestAcStatus(); }, []);
 
   useEffect(() => {
     load();
     const removeAc = subscribeToAc(status => {
+      hasLiveDataRef.current = true;
       setData(status);
       setOffline(false);
-      // setLoading(false);
+      setRefreshing(false);
+      // ── Save to cache ─────────────────────────────────────────
+      AsyncStorage.setItem(CACHE_KEY, JSON.stringify(status)).catch(() => {});
     });
     const removeConnection = subscribeToConnection(
-      () => {
-        setOffline(false);
-        load();
-      },
-      () => {
-        setOffline(true);
-        // setLoading(false);
-      },
+      () => { setOffline(false); load(); },
+      () => { setOffline(true); setRefreshing(false); },
     );
-    return () => {
-      removeAc();
-      removeConnection();
-    };
+    return () => { removeAc(); removeConnection(); };
   }, [load]);
 
   const send = useCallback(async (action: string, value?: unknown) => {
     setData(prev => {
-      if (action === 'power_on') return { ...prev, isOn: true };
-      if (action === 'power_off') return { ...prev, isOn: false };
-      if (action === 'temperature_up') return { ...prev, temperature: Math.min(MAX_TEMP, prev.temperature + 1) };
-      if (action === 'temperature_down') return { ...prev, temperature: Math.max(MIN_TEMP, prev.temperature - 1) };
-      if (action === 'set_temperature') return { ...prev, temperature: value as number };
-      if (action === 'set_mode') return { ...prev, mode: value as AcStatus['mode'] };
-      if (action === 'set_fan_speed') return { ...prev, fanSpeed: value as AcStatus['fanSpeed'] };
-      return prev;
+      const next = (() => {
+        if (action === 'power_on')         return { ...prev, isOn: true };
+        if (action === 'power_off')        return { ...prev, isOn: false };
+        if (action === 'temperature_up')   return { ...prev, temperature: Math.min(MAX_TEMP, prev.temperature + 1) };
+        if (action === 'temperature_down') return { ...prev, temperature: Math.max(MIN_TEMP, prev.temperature - 1) };
+        if (action === 'set_temperature')  return { ...prev, temperature: value as number };
+        if (action === 'set_fan_speed')    return { ...prev, fanSpeed: value as AcStatus['fanSpeed'] };
+        return prev;
+      })();
+      // ── Persist optimistic UI state to cache ──────────────────
+      AsyncStorage.setItem(CACHE_KEY, JSON.stringify(next)).catch(() => {});
+      return next;
     });
     if (!offline) sendAcCommand(action, value);
   }, [offline]);
 
-  // if (loading) {
-  //   return (
-  //     <View style={styles.center}>
-  //       <ActivityIndicator color={colors.primary} size="large" />
-  //       <Text style={styles.loadingText}>Loading AC Status...</Text>
-  //     </View>
-  //   );
-  // }
+  // AC-specific electrical readings — all from hardware /live/sensors PZEM fields
+  const params = [
+    { label: 'AC Current',           value: `${data.acCurrent.toFixed(2)}`,              unit: 'A',   icon: 'activity',         color: colors.primary },
+    { label: 'AC Power',             value: `${data.acPower.toFixed(0)}`,                unit: 'W',   icon: 'cpu',              color: colors.accent  },
+    { label: 'AC Energy Today',      value: `${data.acEnergyKwh.toFixed(3)}`,            unit: 'kWh', icon: 'battery-charging', color: colors.success },
+    { label: 'AC Cumulative Energy', value: `${data.pzemCumulativeEnergyKwh.toFixed(3)}`, unit: 'kWh', icon: 'archive',         color: colors.warning },
+  ];
 
   return (
     <ScrollView
       style={styles.scroll}
       contentContainerStyle={[styles.content, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 76 }]}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={() => { setRefreshing(true); load(); }}
+          tintColor={colors.primary}
+        />
+      }
     >
       {/* Header */}
       <View style={styles.header}>
@@ -206,7 +211,10 @@ export default function AcScreen() {
         {/* Power Button */}
         <TouchableOpacity
           onPress={() => send(data.isOn ? 'power_off' : 'power_on')}
-          style={[styles.powerBtn, { backgroundColor: data.isOn ? colors.primary : colors.secondary, borderColor: data.isOn ? colors.primary : colors.border }]}
+          style={[styles.powerBtn, {
+            backgroundColor: data.isOn ? colors.primary : colors.secondary,
+            borderColor: data.isOn ? colors.primary : colors.border,
+          }]}
           activeOpacity={0.85}
         >
           <Icon name="power" size={22} color={data.isOn ? colors.background : colors.mutedForeground} />
@@ -216,7 +224,22 @@ export default function AcScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Temperature Presets */}
+      {/* AC Electrical Parameters — from hardware /live/sensors PZEM readings */}
+      <Text style={styles.sectionTitle}>ELECTRICAL PARAMETERS</Text>
+      <View style={styles.paramsGrid}>
+        {params.map(p => (
+          <View key={p.label} style={paramCardStyle(p.color)}>
+            <View style={[styles.paramIcon, { backgroundColor: p.color + '1a' }]}>
+              <Icon name={p.icon} size={15} color={p.color} />
+            </View>
+            <Text style={[styles.paramValue, { color: p.color }]}>{p.value}</Text>
+            <Text style={styles.paramUnit}>{p.unit}</Text>
+            <Text style={styles.paramLabel}>{p.label.toUpperCase()}</Text>
+          </View>
+        ))}
+      </View>
+
+      {/* Quick Temperature Presets */}
       <Text style={styles.sectionTitle}>QUICK TEMPERATURE</Text>
       <View style={styles.presetRow}>
         {[16, 18, 20, 22, 24, 26, 28, 30].map(t => {
@@ -225,29 +248,14 @@ export default function AcScreen() {
             <TouchableOpacity
               key={t}
               onPress={() => send('set_temperature', t)}
-              style={[styles.presetBtn, { backgroundColor: active ? colors.primary : colors.card, borderColor: active ? colors.primary : colors.border }]}
+              style={[styles.presetBtn, {
+                backgroundColor: active ? colors.primary : colors.card,
+                borderColor: active ? colors.primary : colors.border,
+              }]}
             >
-              <Text style={[styles.presetText, { color: active ? colors.background : colors.mutedForeground }]}>{t}°</Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-
-      {/* Mode Selection */}
-      <Text style={styles.sectionTitle}>MODE</Text>
-      <View style={styles.modeGrid}>
-        {MODES.map(m => {
-          const active = data.mode === m.key;
-          return (
-            <TouchableOpacity
-              key={m.key}
-              onPress={() => send('set_mode', m.key)}
-              style={[styles.modeCard, { backgroundColor: active ? colors.accent : colors.card, borderColor: active ? colors.accent : colors.border }]}
-              activeOpacity={0.8}
-            >
-              <Icon name={m.icon} size={22} color={active ? '#fff' : colors.mutedForeground} />
-              <Text style={[styles.modeLabel, active ? styles.modeLabelActive : styles.modeLabelInactive]}>{m.label}</Text>
-              {active && <View style={styles.modeActiveDot} />}
+              <Text style={[styles.presetText, { color: active ? colors.background : colors.mutedForeground }]}>
+                {t}°
+              </Text>
             </TouchableOpacity>
           );
         })}
@@ -271,7 +279,6 @@ export default function AcScreen() {
           );
         })}
       </View>
-
     </ScrollView>
   );
 }
@@ -279,11 +286,9 @@ export default function AcScreen() {
 const styles = StyleSheet.create({
   scroll: { flex: 1, backgroundColor: colors.background },
   content: { paddingHorizontal: 16, gap: 12 },
-  center: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center', gap: 12 },
   flex1: { flex: 1 },
   dialCenter: { alignItems: 'center', justifyContent: 'center' },
   dialOverlay: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center' },
-  loadingText: { color: colors.mutedForeground, fontSize: 14 },
   header: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 2 },
   backBtn: { width: 38, height: 38, borderRadius: 10, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
   subtitle: { color: colors.mutedForeground, fontSize: 12 },
@@ -301,15 +306,15 @@ const styles = StyleSheet.create({
   powerBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 24, paddingVertical: 14, borderRadius: 30, borderWidth: 2, marginTop: 4 },
   powerBtnText: { fontSize: 13, fontWeight: '800', letterSpacing: 1 },
   sectionTitle: { color: colors.mutedForeground, fontSize: 10, fontWeight: '700', letterSpacing: 1.5, marginTop: 4 },
+  paramsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  paramCard: { width: '47.5%', backgroundColor: colors.card, borderRadius: 14, borderWidth: 1, borderColor: colors.border, padding: 13, gap: 4 },
+  paramIcon: { width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginBottom: 2 },
+  paramValue: { fontSize: 22, fontWeight: '800' },
+  paramUnit: { fontSize: 11, color: colors.mutedForeground, marginTop: -2 },
+  paramLabel: { fontSize: 10, color: colors.mutedForeground, fontWeight: '600', marginTop: 2 },
   presetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   presetBtn: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 22, borderWidth: 1 },
   presetText: { fontSize: 13, fontWeight: '600' },
-  modeGrid: { flexDirection: 'row', gap: 10 },
-  modeCard: { flex: 1, borderRadius: 14, borderWidth: 1, paddingVertical: 16, alignItems: 'center', gap: 7, position: 'relative' },
-  modeLabel: { fontSize: 12, fontWeight: '600' },
-  modeLabelActive: { color: '#fff' },
-  modeLabelInactive: { color: colors.mutedForeground },
-  modeActiveDot: { position: 'absolute', bottom: 6, width: 4, height: 4, borderRadius: 2, backgroundColor: '#fff' },
   fanRow: { flexDirection: 'row', backgroundColor: colors.card, borderRadius: 14, borderWidth: 1, borderColor: colors.border, padding: 4, gap: 2 },
   fanBtn: { flex: 1, paddingVertical: 12, borderRadius: 10, alignItems: 'center' },
   fanLabel: { fontSize: 13 },

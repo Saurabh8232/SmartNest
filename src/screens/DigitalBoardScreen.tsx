@@ -1,33 +1,30 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, RefreshControl, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { Alert, RefreshControl, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Feather';
 import {
   controlDigitalRelay,
-  DashboardData,
   DigitalBoardStatus,
   lockDigitalRelay,
   rebootSystem,
-  requestDashboard,
   requestDigitalBoard,
   subscribeToConnection,
-  subscribeToDashboard,
   subscribeToDigitalBoard,
   subscribeToShutdownAll,
 } from '../socket/liveCommunication';
-import MiniChart from '../components/MiniChart';
 import colors from '../constants/colors';
 
 const CACHE_KEY = '@smartnest_digitalboard_v1';
 
-const DEFAULT_DATA: DigitalBoardStatus = { relays: [], masterLockEnabled: false, totalCurrent: 0 };
-const DEFAULT_DASH: DashboardData = {
-  systemOnline: false, totalDevices: 0, activeRelays: 0, totalCurrent: 0,
-  voltage: 0, current: 0, power: 0, energy: 0, frequency: 0, powerFactor: 0,
-  voltageHistory: [], powerHistory: [], energyHistory: [], currentHistory: [],
-  lastUpdated: new Date().toISOString(),
+// digitalCurrent matches hardware: digital_current (ACS712 for relay 7)
+// digitalEnergyKwh matches hardware: digital_energy_kwh (cumulative energy relay 7)
+const DEFAULT_DATA: DigitalBoardStatus = {
+  relays: [],
+  masterLockEnabled: false,
+  digitalCurrent: 0,
+  digitalEnergyKwh: 0,
 };
 
 const paramCardStyle = (color: string) => [styles.paramCard, { borderTopColor: color + '99', borderTopWidth: 2 }];
@@ -35,11 +32,8 @@ const paramCardStyle = (color: string) => [styles.paramCard, { borderTopColor: c
 export default function DigitalBoardScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
-  const { width } = useWindowDimensions();
-  const chartWidth = width - 64;
 
   const [board, setBoard] = useState<DigitalBoardStatus>(DEFAULT_DATA);
-  const [dash, setDash] = useState<DashboardData>(DEFAULT_DASH);
   const [offline, setOffline] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const hasLiveBoardDataRef = useRef(false);
@@ -56,7 +50,6 @@ export default function DigitalBoardScreen() {
 
   const load = useCallback(() => {
     requestDigitalBoard();
-    requestDashboard();
   }, []);
 
   useEffect(() => {
@@ -65,10 +58,8 @@ export default function DigitalBoardScreen() {
       setBoard(status);
       setOffline(false);
       setRefreshing(false);
-      // ── Save to cache ─────────────────────────────────────────
       AsyncStorage.setItem(CACHE_KEY, JSON.stringify(status)).catch(() => {});
     });
-    const removeDashboard = subscribeToDashboard(setDash);
     const removeConnection = subscribeToConnection(
       () => { setOffline(false); load(); },
       () => { setOffline(true); setRefreshing(false); },
@@ -77,7 +68,8 @@ export default function DigitalBoardScreen() {
       setBoard(prev => {
         const next = {
           ...prev,
-          totalCurrent: 0,
+          digitalCurrent: 0,
+          digitalEnergyKwh: prev.digitalEnergyKwh, // energy is cumulative — keep it
           relays: prev.relays.map(relay => ({
             ...relay,
             isOn: false,
@@ -92,7 +84,6 @@ export default function DigitalBoardScreen() {
     });
     return () => {
       removeBoard();
-      removeDashboard();
       removeConnection();
       removeShutdownAll();
     };
@@ -104,7 +95,10 @@ export default function DigitalBoardScreen() {
   const handleToggle = useCallback((next: boolean) => {
     if (!relay || isRelayLocked) return;
     const action = next ? 'on' : 'off';
-    setBoard(prev => ({ ...prev, relays: prev.relays.map((r, i) => i === 0 ? { ...r, isOn: next } : r) }));
+    setBoard(prev => ({
+      ...prev,
+      relays: prev.relays.map((r, i) => i === 0 ? { ...r, isOn: next } : r),
+    }));
     if (offline) return;
     controlDigitalRelay(relay.id, action);
   }, [relay, isRelayLocked, offline]);
@@ -114,7 +108,9 @@ export default function DigitalBoardScreen() {
     const next = !isRelayLocked;
     Alert.alert(
       next ? 'Lock Relay?' : 'Unlock Relay?',
-      next ? 'This relay will be locked. Toggle control will be disabled.' : 'This relay will be unlocked and can be controlled again.',
+      next
+        ? 'This relay will be locked. Toggle control will be disabled.'
+        : 'This relay will be unlocked and can be controlled again.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -127,7 +123,7 @@ export default function DigitalBoardScreen() {
             if (!offline) lockDigitalRelay(relay.id, next);
           },
         },
-      ]
+      ],
     );
   }, [relay, isRelayLocked, offline]);
 
@@ -136,7 +132,6 @@ export default function DigitalBoardScreen() {
       Alert.alert('System Offline', 'Connect to the backend before rebooting the system.');
       return;
     }
-
     Alert.alert(
       'Reboot System?',
       'The backend will send a reboot command to the hardware for the full system.',
@@ -147,18 +142,18 @@ export default function DigitalBoardScreen() {
     );
   }, [offline]);
 
+  // Board-specific electrical readings — matches hardware digital_current and digital_energy_kwh
   const params = [
-    { label: 'Voltage', value: `${dash.voltage.toFixed(1)}`, unit: 'V', icon: 'zap', color: colors.warning },
-    { label: 'Current', value: `${dash.current.toFixed(2)}`, unit: 'A', icon: 'activity', color: colors.primary },
-    { label: 'Power', value: `${dash.power.toFixed(0)}`, unit: 'W', icon: 'cpu', color: colors.accent },
-    { label: 'Energy', value: `${dash.energy.toFixed(2)}`, unit: 'kWh', icon: 'battery-charging', color: colors.success },
+    { label: 'Digital Current', value: `${board.digitalCurrent.toFixed(2)}`,   unit: 'A',   icon: 'activity',          color: colors.primary },
+    { label: 'Digital Energy',  value: `${board.digitalEnergyKwh.toFixed(3)}`, unit: 'kWh', icon: 'battery-charging',  color: colors.success },
   ];
 
   const relayStatusColor =
-    !relay ? colors.mutedForeground :
-    relay.status === 'error' ? colors.destructive :
+    !relay              ? colors.mutedForeground :
+    relay.status === 'error'   ? colors.destructive :
     relay.status === 'offline' ? colors.mutedForeground :
-    relay.isOn ? colors.success : colors.border;
+    relay.isOn                 ? colors.success :
+                                  colors.border;
 
   const activeIndicatorColor = isRelayLocked ? colors.warning : relayStatusColor;
 
@@ -166,7 +161,13 @@ export default function DigitalBoardScreen() {
     <ScrollView
       style={styles.scroll}
       contentContainerStyle={[styles.content, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 76 }]}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.primary} />}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={() => { setRefreshing(true); load(); }}
+          tintColor={colors.primary}
+        />
+      }
     >
       {/* Header */}
       <View style={styles.header}>
@@ -185,7 +186,7 @@ export default function DigitalBoardScreen() {
         )}
       </View>
 
-      {/* Electrical Parameters */}
+      {/* Board-Specific Electrical Parameters */}
       <Text style={styles.sectionTitle}>ELECTRICAL PARAMETERS</Text>
       <View style={styles.paramsGrid}>
         {params.map(p => (
@@ -200,6 +201,7 @@ export default function DigitalBoardScreen() {
         ))}
       </View>
 
+      {/* Reboot Button */}
       <TouchableOpacity
         onPress={handleReboot}
         activeOpacity={0.85}
@@ -213,23 +215,6 @@ export default function DigitalBoardScreen() {
           <Text style={styles.rebootDesc}>Restart the full hardware system</Text>
         </View>
       </TouchableOpacity>
-
-      {/* Power Chart */}
-      {dash.powerHistory.length > 1 && (
-        <>
-          <Text style={styles.sectionTitle}>POWER CONSUMPTION TREND</Text>
-          <View style={styles.chartCard}>
-            <View style={styles.chartHeader}>
-              <View style={styles.chartTitleRow}>
-                <View style={[styles.chartDot, { backgroundColor: colors.accent }]} />
-                <Text style={styles.chartTitle}>Power Consumption</Text>
-              </View>
-              <Text style={[styles.chartValue, { color: colors.accent }]}>{dash.power.toFixed(0)} W</Text>
-            </View>
-            <MiniChart data={dash.powerHistory} color={colors.accent} height={68} width={chartWidth} />
-          </View>
-        </>
-      )}
 
       {/* Relay Control */}
       <Text style={styles.sectionTitle}>RELAY CONTROL</Text>
@@ -255,7 +240,6 @@ export default function DigitalBoardScreen() {
                 </Text>
               </View>
             </View>
-            {/* Individual Lock Button */}
             <TouchableOpacity
               onPress={handleRelayLock}
               style={[styles.lockBtn, { backgroundColor: isRelayLocked ? colors.warning + '22' : colors.secondary }]}
@@ -285,7 +269,9 @@ export default function DigitalBoardScreen() {
             <View style={styles.metricDivider} />
             <View style={styles.relayMetric}>
               <Text style={styles.relayMetricLabel}>Status</Text>
-              <Text style={[styles.relayMetricValue, { color: activeIndicatorColor }]}>{isRelayLocked ? 'Locked' : relay.isOn ? 'Running' : 'Standby'}</Text>
+              <Text style={[styles.relayMetricValue, { color: activeIndicatorColor }]}>
+                {isRelayLocked ? 'Locked' : relay.isOn ? 'Running' : 'Standby'}
+              </Text>
             </View>
           </View>
         </View>
@@ -304,6 +290,7 @@ export default function DigitalBoardScreen() {
 const styles = StyleSheet.create({
   scroll: { flex: 1, backgroundColor: colors.background },
   content: { paddingHorizontal: 16, gap: 12 },
+  flex1: { flex: 1 },
   header: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 2 },
   backBtn: { width: 38, height: 38, borderRadius: 10, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
   subtitle: { color: colors.mutedForeground, fontSize: 12 },
@@ -311,18 +298,12 @@ const styles = StyleSheet.create({
   offlinePill: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: colors.warning + '22', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1, borderColor: colors.warning + '44' },
   offlineText: { color: colors.warning, fontSize: 11, fontWeight: '700' },
   sectionTitle: { color: colors.mutedForeground, fontSize: 10, fontWeight: '700', letterSpacing: 1.5, marginTop: 4 },
-  paramsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  paramCard: { width: '47.5%', backgroundColor: colors.card, borderRadius: 14, borderWidth: 1, borderColor: colors.border, padding: 13, gap: 4 },
+  paramsGrid: { flexDirection: 'row', gap: 10 },
+  paramCard: { flex: 1, backgroundColor: colors.card, borderRadius: 14, borderWidth: 1, borderColor: colors.border, padding: 13, gap: 4 },
   paramIcon: { width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginBottom: 2 },
   paramValue: { fontSize: 22, fontWeight: '800' },
   paramUnit: { fontSize: 11, color: colors.mutedForeground, marginTop: -2 },
   paramLabel: { fontSize: 10, color: colors.mutedForeground, fontWeight: '600', marginTop: 2 },
-  chartCard: { backgroundColor: colors.card, borderRadius: 16, borderWidth: 1, borderColor: colors.border, padding: 16, gap: 14, overflow: 'hidden' },
-  chartHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  chartTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  chartDot: { width: 8, height: 8, borderRadius: 4 },
-  chartTitle: { color: colors.foreground, fontSize: 14, fontWeight: '600' },
-  chartValue: { fontSize: 18, fontWeight: '800' },
   rebootBtn: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.card, borderRadius: 14, borderWidth: 1, borderColor: colors.warning + '44', padding: 14 },
   disabledBtn: { opacity: 0.55 },
   rebootIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.warning + '22' },
@@ -346,5 +327,4 @@ const styles = StyleSheet.create({
   emptyDesc: { color: colors.mutedForeground, fontSize: 13, textAlign: 'center' },
   offlineNote: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.warning + '11', borderRadius: 10, padding: 12, borderWidth: 1, borderColor: colors.warning + '33' },
   offlineNoteText: { flex: 1, color: colors.warning, fontSize: 12 },
-  flex1: { flex: 1 },
 });

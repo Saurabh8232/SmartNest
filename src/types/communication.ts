@@ -30,14 +30,15 @@ export interface Relay {
   isOn: boolean;
   current: number;
   status: 'normal' | 'error' | 'offline';
-  locked: boolean;  // ← NEW
+  locked: boolean;
 }
 
 export interface MainBoardStatus {
   masterLockEnabled: boolean;
   shutdownEnabled: boolean;
   relays: Relay[];
-  totalCurrent: number;
+  mainCurrent: number;       // matches hardware: main_current
+  mainEnergyKwh: number;     // matches hardware: main_energy_kwh
 }
 
 export interface DigitalRelay {
@@ -47,23 +48,27 @@ export interface DigitalRelay {
   current: number;
   power: number;
   status: 'normal' | 'error' | 'offline';
-  switchState: 'pressed' | 'released';  // ← NEW
-  locked: boolean;                       // ← NEW
+  switchState: 'pressed' | 'released';
+  locked: boolean;
 }
 
 export interface DigitalBoardStatus {
   masterLockEnabled: boolean;
   relays: DigitalRelay[];
-  totalCurrent: number;  // ← NEW
+  digitalCurrent: number;
+  digitalEnergyKwh: number;
 }
 
 export interface AcStatus {
   isOn: boolean;
   temperature: number;
-  mode: 'cool' | 'fan' | 'dry' | 'auto';
-  fanSpeed: 'low' | 'medium' | 'high' | 'auto';
+  fanSpeed: 'auto' | 'min' | 'low' | 'med' | 'high' | 'max'; // matches hardware ac_set fan values
   swingOn: boolean;
   irBlasterAvailable: boolean;
+  acCurrent: number;
+  acEnergyKwh: number;
+  acPower: number;
+  pzemCumulativeEnergyKwh: number;
 }
 
 export interface HistoryData {

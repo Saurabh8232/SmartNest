@@ -5,14 +5,19 @@ const cors = require("cors");
 
 const app = express();
 app.use(cors());
+app.use(express.json());
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
 
 // ── Mock State ────────────────────────────────────────────────────
+
+// mainCurrent  → hardware: main_current  (ACS712 for relays 1-6)
+// mainEnergyKwh → hardware: main_energy_kwh (cumulative energy relays 1-6)
 let mainBoard = {
   masterLockEnabled: false,
   shutdownEnabled: false,
-  totalCurrent: 4.2,
+  mainCurrent: 4.2,
+  mainEnergyKwh: 2.345,
   relays: [
     { id: "r1", name: "Living Room Fan",  number: 1, isOn: true,  current: 1.2, status: "normal", locked: false },
     { id: "r2", name: "Bedroom Light",    number: 2, isOn: false, current: 0.0, status: "normal", locked: false },
@@ -23,33 +28,47 @@ let mainBoard = {
   ],
 };
 
+// digitalCurrent   → hardware: digital_current  (ACS for relay 7)
+// digitalEnergyKwh → hardware: digital_energy_kwh (cumulative energy relay 7)
 let digitalBoard = {
   masterLockEnabled: false,
-  totalCurrent: 0.6,
+  digitalCurrent: 0.6,
+  digitalEnergyKwh: 0.567,
   relays: [
     { id: "d1", name: "Smart Plug 1", isOn: true, current: 0.6, power: 132, status: "normal", switchState: "released", locked: false },
-    // { id: "d2", name: "Smart Plug 2", isOn: false, current: 0.0, power: 0,   status: "normal", switchState: "released", locked: false },
-    // { id: "d3", name: "LED Strip",    isOn: true,  current: 0.5, power: 110, status: "normal", switchState: "released", locked: false },
   ],
 };
 
+// acCurrent            → hardware: ac_current
+// acPower              → hardware: ac_power
+// acEnergyKwh          → hardware: ac_energy_kwh (today's energy)
+// pzemCumulativeEnergyKwh → hardware: pzem_cumulative_energy_kwh
+// mode removed         → hardware firmware does not support mode changes via MQTT
+// fanSpeed values      → hardware: auto | min | low | med | high | max
 let acStatus = {
-  isOn: false, temperature: 24, mode: "cool", fanSpeed: "auto",
-  swingOn: false, irBlasterAvailable: true,
-  voltage: 220.4, current: 0.0, power: 0.0, energy: 1.84,
+  isOn: false,
+  temperature: 24,
+  fanSpeed: "auto",
+  swingOn: false,
+  irBlasterAvailable: true,
+  acCurrent: 0.0,
+  acPower: 0.0,
+  acEnergyKwh: 0.235,
+  pzemCumulativeEnergyKwh: 10.500,
 };
 
 let alerts = [
-  { id: "a1", type: "electrical",    code: "OV01", title: "High Voltage Detected",      description: "Voltage exceeded 240V threshold.", severity: "warning", suggestedSolution: "Check main supply.",                        timestamp: new Date(Date.now() - 300000).toISOString(), isResolved: false, deviceName: "Main Board"    },
-  { id: "a2", type: "communication", code: "CM01", title: "Digital Board Reconnected",  description: "Lost connection for 30s.",          severity: "info",    suggestedSolution: "Monitor for recurring disconnections.",  timestamp: new Date(Date.now() - 900000).toISOString(), isResolved: false, deviceName: "Digital Board" },
+  { id: "a1", type: "electrical",    code: "OV01", title: "High Voltage Detected",     description: "Voltage exceeded 240V threshold.", severity: "warning", suggestedSolution: "Check main supply.",                      timestamp: new Date(Date.now() - 300000).toISOString(), isResolved: false, deviceName: "Main Board"    },
+  { id: "a2", type: "communication", code: "CM01", title: "Digital Board Reconnected", description: "Lost connection for 30s.",          severity: "info",    suggestedSolution: "Monitor for recurring disconnections.", timestamp: new Date(Date.now() - 900000).toISOString(), isResolved: false, deviceName: "Digital Board" },
 ];
 
 let devices = [
-  { id: "dev1", name: "Main Board",    deviceId: "SN-MB-001", ipAddress: "192.168.1.101", macAddress: "AA:BB:CC:DD:EE:01", isOnline: true, rssi: -55, lastConnected: new Date(Date.now() - 60000).toISOString(),  type: "main-board"    },
-  { id: "dev2", name: "AC Controller", deviceId: "SN-AC-001", ipAddress: "192.168.1.102", macAddress: "AA:BB:CC:DD:EE:02", isOnline: true, rssi: -62, lastConnected: new Date(Date.now() - 30000).toISOString(),  type: "ac-controller" },
-  { id: "dev3", name: "Digital Board", deviceId: "SN-DB-001", ipAddress: "192.168.1.103", macAddress: "AA:BB:CC:DD:EE:03", isOnline: true, rssi: -72, lastConnected: new Date(Date.now() - 20000).toISOString(),  type: "digital-board" },
+  { id: "dev1", name: "Main Board",    deviceId: "SN-MB-001", ipAddress: "192.168.1.101", macAddress: "AA:BB:CC:DD:EE:01", isOnline: true, rssi: -55, lastConnected: new Date(Date.now() - 60000).toISOString(), type: "main-board"    },
+  { id: "dev2", name: "AC Controller", deviceId: "SN-AC-001", ipAddress: "192.168.1.102", macAddress: "AA:BB:CC:DD:EE:02", isOnline: true, rssi: -62, lastConnected: new Date(Date.now() - 30000).toISOString(), type: "ac-controller" },
+  { id: "dev3", name: "Digital Board", deviceId: "SN-DB-001", ipAddress: "192.168.1.103", macAddress: "AA:BB:CC:DD:EE:03", isOnline: true, rssi: -72, lastConnected: new Date(Date.now() - 20000).toISOString(), type: "digital-board" },
 ];
 
+// ── Helpers ───────────────────────────────────────────────────────
 function setDeviceOnline(type, isOnline) {
   const device = devices.find(d => d.type === type);
   if (device) {
@@ -101,20 +120,26 @@ function tick() {
   if (powerHistory.length > 20)   powerHistory.shift();
   if (currentHistory.length > 20) currentHistory.shift();
 
-  mainBoard.totalCurrent = +mainBoard.relays.reduce((s, r) => s + r.current, 0).toFixed(2);
+  // Main board — mainCurrent sums relay 1-6 currents, mainEnergyKwh accumulates
+  mainBoard.mainCurrent = +mainBoard.relays.reduce((s, r) => s + r.current, 0).toFixed(2);
+  mainBoard.mainEnergyKwh = +(mainBoard.mainEnergyKwh + (mainBoard.mainCurrent * 220) / 3600000).toFixed(4);
 
-  // Simulate random switchState toggles on digital board
+  // Digital board — simulate switchState toggles, recalc digitalCurrent and digitalEnergyKwh
   digitalBoard.relays.forEach(r => {
     if (Math.random() < 0.05) {
       r.switchState = r.switchState === "pressed" ? "released" : "pressed";
     }
   });
-  digitalBoard.totalCurrent = +digitalBoard.relays.reduce((s, r) => s + r.current, 0).toFixed(2);
+  digitalBoard.digitalCurrent = +digitalBoard.relays.reduce((s, r) => s + r.current, 0).toFixed(2);
+  digitalBoard.digitalEnergyKwh = +(digitalBoard.digitalEnergyKwh + (digitalBoard.digitalCurrent * 220) / 3600000).toFixed(4);
 
+  // AC — acCurrent, acPower, acEnergyKwh, pzemCumulativeEnergyKwh update only when on
   if (acStatus.isOn) {
-    acStatus.current = +(3.5 + (Math.random() - 0.5) * 0.3).toFixed(2);
-    acStatus.power   = +(acStatus.current * voltage).toFixed(1);
-    acStatus.energy  = +(acStatus.energy + acStatus.power / 3600000).toFixed(4);
+    acStatus.acCurrent = +(3.5 + (Math.random() - 0.5) * 0.3).toFixed(2);
+    acStatus.acPower   = +(acStatus.acCurrent * voltage).toFixed(1);
+    acStatus.acEnergyKwh            = +(acStatus.acEnergyKwh + acStatus.acPower / 3600000).toFixed(4);
+    acStatus.pzemCumulativeEnergyKwh = +(acStatus.pzemCumulativeEnergyKwh + acStatus.acPower / 3600000).toFixed(4);
+    io.emit("ac:update", acStatus);
   }
 
   io.emit("dashboard:update", getDashboardData());
@@ -123,9 +148,9 @@ function tick() {
 setInterval(tick, 3000);
 
 function getDashboardData() {
-  const activeMainRelays = mainBoard.relays.filter(r => r.isOn).length;
+  const activeMainRelays    = mainBoard.relays.filter(r => r.isOn).length;
   const activeDigitalRelays = digitalBoard.relays.filter(r => r.isOn).length;
-  const totalRelayCurrent = +(mainBoard.totalCurrent + digitalBoard.totalCurrent).toFixed(2);
+  const totalRelayCurrent   = +(mainBoard.mainCurrent + digitalBoard.digitalCurrent).toFixed(2);
 
   return {
     systemOnline: true,
@@ -139,6 +164,27 @@ function getDashboardData() {
     temperature, humidity,
   };
 }
+
+// ── REST: History ─────────────────────────────────────────────────
+app.get("/api/history/energy", (req, res) => {
+  const records = Array.from({ length: 10 }, (_, i) => ({
+    id: `e${i + 1}`,
+    timestamp: new Date(Date.now() - i * 3600000).toISOString(),
+    energy: +(Math.random() * 2 + 0.5).toFixed(3),
+  }));
+  res.json({ energyRecords: records, energyTrend: currentHistory });
+});
+
+app.get("/api/history/ac", (req, res) => {
+  const records = Array.from({ length: 8 }, (_, i) => ({
+    id: `ac${i + 1}`,
+    action: ["power_on", "power_off", "set_temperature", "set_fan_speed"][i % 4],
+    oldValue: String(20 + i),
+    newValue: String(22 + i),
+    timestamp: new Date(Date.now() - i * 1800000).toISOString(),
+  }));
+  res.json({ acRecords: records });
+});
 
 // ── Socket Events ─────────────────────────────────────────────────
 io.on("connection", (socket) => {
@@ -157,10 +203,24 @@ io.on("connection", (socket) => {
       relay.isOn    = action === "on";
       relay.current = relay.isOn ? +(Math.random() * 2 + 0.3).toFixed(2) : 0;
     }
-    mainBoard.totalCurrent = +mainBoard.relays.reduce((s, r) => s + r.current, 0).toFixed(2);
+    mainBoard.mainCurrent = +mainBoard.relays.reduce((s, r) => s + r.current, 0).toFixed(2);
     io.emit("main-board:update", mainBoard);
     io.emit("dashboard:update", getDashboardData());
     console.log(`Main relay ${relayId} → ${action}`);
+  });
+
+  // Lighting group: controls relays 1-5 together (locked relays are skipped)
+  socket.on("main-board:lighting-group-control", ({ action }) => {
+    mainBoard.relays.forEach(r => {
+      if (r.number >= 1 && r.number <= 5 && !r.locked && !mainBoard.masterLockEnabled) {
+        r.isOn    = action === "on";
+        r.current = r.isOn ? +(Math.random() * 2 + 0.3).toFixed(2) : 0;
+      }
+    });
+    mainBoard.mainCurrent = +mainBoard.relays.reduce((s, r) => s + r.current, 0).toFixed(2);
+    io.emit("main-board:update", mainBoard);
+    io.emit("dashboard:update", getDashboardData());
+    console.log(`Lighting group → ${action}`);
   });
 
   socket.on("main-board:master-lock", ({ enabled }) => {
@@ -169,7 +229,6 @@ io.on("connection", (socket) => {
     console.log(`Main master lock → ${enabled}`);
   });
 
-  // Individual relay lock (Main Board)
   socket.on("main-board:relay-lock", ({ relayId, locked }) => {
     const relay = mainBoard.relays.find(r => r.id === relayId);
     if (relay) relay.locked = locked;
@@ -177,11 +236,10 @@ io.on("connection", (socket) => {
     console.log(`Main relay ${relayId} lock → ${locked}`);
   });
 
-  // Shutdown: affects ONLY Main Board relays
   socket.on("main-board:master-shutdown", ({ enabled }) => {
     mainBoard.shutdownEnabled = enabled;
     if (enabled) mainBoard.relays.forEach(r => { r.isOn = false; r.current = 0; });
-    mainBoard.totalCurrent = +mainBoard.relays.reduce((s, r) => s + r.current, 0).toFixed(2);
+    mainBoard.mainCurrent = +mainBoard.relays.reduce((s, r) => s + r.current, 0).toFixed(2);
     io.emit("main-board:update", mainBoard);
     io.emit("dashboard:update", getDashboardData());
     console.log(`Main shutdown → ${enabled}`);
@@ -206,22 +264,31 @@ io.on("connection", (socket) => {
   socket.on("system:master-shutdown", ({ enabled }) => {
     mainBoard.shutdownEnabled = enabled;
     if (enabled) mainBoard.relays.forEach(r => { r.isOn = false; r.current = 0; });
-    mainBoard.totalCurrent = +mainBoard.relays.reduce((s, r) => s + r.current, 0).toFixed(2);
+    mainBoard.mainCurrent = +mainBoard.relays.reduce((s, r) => s + r.current, 0).toFixed(2);
     io.emit("main-board:update", mainBoard);
     io.emit("dashboard:update", getDashboardData());
     console.log(`System shutdown → ${enabled}`);
   });
 
-  // ── One-shot shutdown: turns ALL relays OFF on BOTH boards, no persistent state ──
+  // One-shot shutdown: turns ALL relays OFF on BOTH boards, no persistent lock
   socket.on("system:shutdown-all", () => {
     mainBoard.relays.forEach(r => { r.isOn = false; r.current = 0; });
-    mainBoard.totalCurrent = 0;
+    mainBoard.mainCurrent = 0;
+    // mainEnergyKwh is cumulative — do NOT reset on shutdown
+
     digitalBoard.relays.forEach(r => { r.isOn = false; r.current = 0; r.power = 0; });
-    digitalBoard.totalCurrent = 0;
+    digitalBoard.digitalCurrent = 0;
+    // digitalEnergyKwh is cumulative — do NOT reset on shutdown
+
     io.emit("main-board:update", mainBoard);
     io.emit("digital-board:update", digitalBoard);
     io.emit("dashboard:update", getDashboardData());
     console.log(`System: shutdown-all (one-shot — relays OFF, no lock, controls still work)`);
+  });
+
+  socket.on("system:reboot", () => {
+    rebootSystem();
+    console.log(`System reboot requested`);
   });
 
   // ── Digital Board ───────────────────────────────────────────────
@@ -234,7 +301,7 @@ io.on("connection", (socket) => {
       relay.current = relay.isOn ? +(Math.random() * 0.8 + 0.1).toFixed(2) : 0;
       relay.power   = +(relay.current * 220).toFixed(0);
     }
-    digitalBoard.totalCurrent = +digitalBoard.relays.reduce((s, r) => s + r.current, 0).toFixed(2);
+    digitalBoard.digitalCurrent = +digitalBoard.relays.reduce((s, r) => s + r.current, 0).toFixed(2);
     io.emit("digital-board:update", digitalBoard);
     io.emit("dashboard:update", getDashboardData());
     console.log(`Digital relay ${relayId} → ${action}`);
@@ -246,12 +313,6 @@ io.on("connection", (socket) => {
     console.log(`Digital master lock → ${enabled}`);
   });
 
-  socket.on("digital-board:reboot", () => {
-    rebootBoard(digitalBoard, "digital-board", "digital-board:update");
-    console.log(`Digital board reboot requested`);
-  });
-
-  // Individual relay lock (Digital Board)
   socket.on("digital-board:relay-lock", ({ relayId, locked }) => {
     const relay = digitalBoard.relays.find(r => r.id === relayId);
     if (relay) relay.locked = locked;
@@ -259,18 +320,31 @@ io.on("connection", (socket) => {
     console.log(`Digital relay ${relayId} lock → ${locked}`);
   });
 
+  socket.on("digital-board:reboot", () => {
+    rebootBoard(digitalBoard, "digital-board", "digital-board:update");
+    console.log(`Digital board reboot requested`);
+  });
+
   // ── AC ──────────────────────────────────────────────────────────
   socket.on("ac:request", () => socket.emit("ac:update", acStatus));
 
   socket.on("ac:control", ({ action, value }) => {
-    if (action === "power_on")          { acStatus.isOn = true; acStatus.current = 3.5; acStatus.power = 770; }
-    if (action === "power_off")         { acStatus.isOn = false; acStatus.current = 0; acStatus.power = 0; }
-    if (action === "set_temperature")     acStatus.temperature = value;
-    if (action === "temperature_up")      acStatus.temperature = Math.min(30, acStatus.temperature + 1);
-    if (action === "temperature_down")    acStatus.temperature = Math.max(16, acStatus.temperature - 1);
-    if (action === "set_mode")            acStatus.mode = value;
-    if (action === "set_fan_speed")       acStatus.fanSpeed = value;
-    if (action === "toggle_swing")        acStatus.swingOn = !acStatus.swingOn;
+    if (action === "power_on") {
+      acStatus.isOn      = true;
+      acStatus.acCurrent = 3.5;
+      acStatus.acPower   = +(3.5 * voltage).toFixed(1);
+    }
+    if (action === "power_off") {
+      acStatus.isOn      = false;
+      acStatus.acCurrent = 0;
+      acStatus.acPower   = 0;
+    }
+    if (action === "set_temperature")  acStatus.temperature = value;
+    if (action === "temperature_up")   acStatus.temperature = Math.min(30, acStatus.temperature + 1);
+    if (action === "temperature_down") acStatus.temperature = Math.max(16, acStatus.temperature - 1);
+    if (action === "set_fan_speed")    acStatus.fanSpeed    = value; // auto | min | low | med | high | max
+    if (action === "toggle_swing")     acStatus.swingOn     = !acStatus.swingOn;
+    // set_mode intentionally not handled — hardware does not support mode changes
     io.emit("ac:update", acStatus);
     console.log(`AC ${action}`, value ?? "");
   });
@@ -287,7 +361,7 @@ io.on("connection", (socket) => {
   socket.on("disconnect", () => console.log(`❌ Disconnected: ${socket.id}`));
 });
 
-const PORT = 5000;
+const PORT = process.env.PORT || 5000;
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`\n🚀 SmartNest Mock Server`);
   console.log(`   Port: ${PORT}`);
