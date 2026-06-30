@@ -9,6 +9,7 @@ import {
   DashboardData,
   DigitalBoardStatus,
   lockDigitalRelay,
+  rebootSystem,
   requestDashboard,
   requestDigitalBoard,
   subscribeToConnection,
@@ -130,6 +131,22 @@ export default function DigitalBoardScreen() {
     );
   }, [relay, isRelayLocked, offline]);
 
+  const handleReboot = useCallback(() => {
+    if (offline) {
+      Alert.alert('System Offline', 'Connect to the backend before rebooting the system.');
+      return;
+    }
+
+    Alert.alert(
+      'Reboot System?',
+      'The backend will send a reboot command to the hardware for the full system.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Reboot', onPress: rebootSystem },
+      ],
+    );
+  }, [offline]);
+
   const params = [
     { label: 'Voltage', value: `${dash.voltage.toFixed(1)}`, unit: 'V', icon: 'zap', color: colors.warning },
     { label: 'Current', value: `${dash.current.toFixed(2)}`, unit: 'A', icon: 'activity', color: colors.primary },
@@ -182,6 +199,20 @@ export default function DigitalBoardScreen() {
           </View>
         ))}
       </View>
+
+      <TouchableOpacity
+        onPress={handleReboot}
+        activeOpacity={0.85}
+        style={[styles.rebootBtn, offline && styles.disabledBtn]}
+      >
+        <View style={styles.rebootIcon}>
+          <Icon name="rotate-cw" size={17} color={colors.warning} />
+        </View>
+        <View style={styles.flex1}>
+          <Text style={styles.rebootTitle}>Reboot</Text>
+          <Text style={styles.rebootDesc}>Restart the full hardware system</Text>
+        </View>
+      </TouchableOpacity>
 
       {/* Power Chart */}
       {dash.powerHistory.length > 1 && (
@@ -292,6 +323,11 @@ const styles = StyleSheet.create({
   chartDot: { width: 8, height: 8, borderRadius: 4 },
   chartTitle: { color: colors.foreground, fontSize: 14, fontWeight: '600' },
   chartValue: { fontSize: 18, fontWeight: '800' },
+  rebootBtn: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.card, borderRadius: 14, borderWidth: 1, borderColor: colors.warning + '44', padding: 14 },
+  disabledBtn: { opacity: 0.55 },
+  rebootIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.warning + '22' },
+  rebootTitle: { color: colors.warning, fontSize: 14, fontWeight: '700' },
+  rebootDesc: { color: colors.mutedForeground, fontSize: 11, marginTop: 2 },
   relayCard: { backgroundColor: colors.card, borderRadius: 16, borderWidth: 1, padding: 16, gap: 16 },
   relayTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   relayIconWrap: { width: 46, height: 46, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },

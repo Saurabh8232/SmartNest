@@ -5,9 +5,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Feather';
 import {
+  controlMainLightingGroup,
   controlMainRelay,
   lockMainRelay,
   MainBoardStatus,
+  rebootSystem,
   requestMainBoard,
   subscribeToConnection,
   subscribeToMainBoard,
@@ -100,6 +102,35 @@ export default function MainBoardScreen() {
     );
   }, [offline]);
 
+  const handleReboot = useCallback(() => {
+    if (offline) {
+      Alert.alert('System Offline', 'Connect to the backend before rebooting the system.');
+      return;
+    }
+
+    Alert.alert(
+      'Reboot System?',
+      'The backend will send a reboot command to the hardware for the full system.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Reboot', onPress: rebootSystem },
+      ],
+    );
+  }, [offline]);
+
+  const handleLightingGroup = useCallback((action: 'on' | 'off') => {
+    setData(prev => ({
+      ...prev,
+      relays: prev.relays.map(relay =>
+        relay.number >= 1 && relay.number <= 5 && !(relay as any).locked
+          ? { ...relay, isOn: action === 'on' }
+          : relay,
+      ),
+    }));
+    if (offline) return;
+    controlMainLightingGroup(action);
+  }, [offline]);
+
   const activeRelays = data.relays.filter(r => r.isOn).length;
 
   return (
@@ -137,6 +168,50 @@ export default function MainBoardScreen() {
             <Text style={styles.statLabel}>{s.label}</Text>
           </View>
         ))}
+      </View>
+
+      <TouchableOpacity
+        onPress={handleReboot}
+        activeOpacity={0.85}
+        style={[styles.rebootBtn, offline && styles.disabledBtn]}
+      >
+        <View style={styles.rebootIcon}>
+          <Icon name="rotate-cw" size={17} color={colors.warning} />
+        </View>
+        <View style={styles.flex1}>
+          <Text style={styles.rebootTitle}>Reboot</Text>
+          <Text style={styles.rebootDesc}>Restart the full hardware system</Text>
+        </View>
+      </TouchableOpacity>
+
+      <View style={styles.groupCard}>
+        <View style={styles.groupHeader}>
+          <View style={styles.groupIcon}>
+            <Icon name="sun" size={17} color={colors.primary} />
+          </View>
+          <View style={styles.flex1}>
+            <Text style={styles.groupTitle}>Lighting Group</Text>
+            <Text style={styles.groupDesc}>Control relays 1-5 together</Text>
+          </View>
+        </View>
+        <View style={styles.groupActions}>
+          <TouchableOpacity
+            onPress={() => handleLightingGroup('on')}
+            activeOpacity={0.85}
+            style={[styles.groupBtn, styles.groupBtnOn, offline && styles.disabledBtn]}
+          >
+            <Icon name="power" size={14} color={colors.background} />
+            <Text style={styles.groupBtnOnText}>All ON</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => handleLightingGroup('off')}
+            activeOpacity={0.85}
+            style={[styles.groupBtn, styles.groupBtnOff, offline && styles.disabledBtn]}
+          >
+            <Icon name="power" size={14} color={colors.mutedForeground} />
+            <Text style={styles.groupBtnOffText}>All OFF</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <Text style={styles.sectionTitle}>RELAY CONTROLS</Text>
@@ -207,6 +282,22 @@ const styles = StyleSheet.create({
   statIcon: { width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   statVal: { fontSize: 18, fontWeight: '800' },
   statLabel: { fontSize: 11, color: colors.mutedForeground },
+  rebootBtn: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.card, borderRadius: 14, borderWidth: 1, borderColor: colors.warning + '44', padding: 14 },
+  disabledBtn: { opacity: 0.55 },
+  rebootIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.warning + '22' },
+  rebootTitle: { color: colors.warning, fontSize: 14, fontWeight: '700' },
+  rebootDesc: { color: colors.mutedForeground, fontSize: 11, marginTop: 2 },
+  groupCard: { backgroundColor: colors.card, borderRadius: 14, borderWidth: 1, borderColor: colors.border, padding: 14, gap: 12 },
+  groupHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  groupIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primary + '22' },
+  groupTitle: { color: colors.foreground, fontSize: 14, fontWeight: '700' },
+  groupDesc: { color: colors.mutedForeground, fontSize: 11, marginTop: 2 },
+  groupActions: { flexDirection: 'row', gap: 10 },
+  groupBtn: { flex: 1, minHeight: 42, borderRadius: 10, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 7, borderWidth: 1 },
+  groupBtnOn: { backgroundColor: colors.primary, borderColor: colors.primary },
+  groupBtnOff: { backgroundColor: colors.secondary, borderColor: colors.border },
+  groupBtnOnText: { color: colors.background, fontSize: 13, fontWeight: '700' },
+  groupBtnOffText: { color: colors.mutedForeground, fontSize: 13, fontWeight: '700' },
   sectionTitle: { color: colors.mutedForeground, fontSize: 10, fontWeight: '700', letterSpacing: 1.5, marginTop: 4 },
   relayList: { gap: 8 },
   relayCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.card, borderRadius: 14, borderWidth: 1, padding: 14 },

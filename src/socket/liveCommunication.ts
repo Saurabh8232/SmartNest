@@ -51,10 +51,16 @@ export const requestMainBoard = () =>
 
 export const controlMainRelay = (relayId: string, action: 'on' | 'off') =>
   socketManager.emit(SOCKET_EVENTS.mainRelayControl, { relayId, action });
+export const controlMainLightingGroup = (action: 'on' | 'off') =>
+  socketManager.emit(SOCKET_EVENTS.mainLightingGroupControl, { action });
 export const setMasterLock = (enabled: boolean) =>
   socketManager.emit(SOCKET_EVENTS.masterLockControl, { enabled });
 export const setMasterShutdown = (enabled: boolean) =>
   socketManager.emit(SOCKET_EVENTS.masterShutdownControl, { enabled });
+export const rebootMainBoard = () =>
+  socketManager.emit(SOCKET_EVENTS.mainBoardReboot);
+export const rebootSystem = () =>
+  socketManager.emit(SOCKET_EVENTS.systemReboot);
 
 // ── Global controls ──────────────────────────────────────────────────────────
 export const masterUnlockAll = () => {
@@ -108,6 +114,8 @@ export const controlDigitalRelay = (relayId: string, action: 'on' | 'off') =>
   socketManager.emit(SOCKET_EVENTS.digitalRelayControl, { relayId, action });
 export const setDigitalMasterLock = (enabled: boolean) =>
   socketManager.emit(SOCKET_EVENTS.digitalMasterLockControl, { enabled });
+export const rebootDigitalBoard = () =>
+  socketManager.emit(SOCKET_EVENTS.digitalBoardReboot);
 
 export const subscribeToAc = (listener: (status: AcStatus) => void) =>
   subscribe(SOCKET_EVENTS.acUpdate, SOCKET_EVENTS.acRequest, listener);

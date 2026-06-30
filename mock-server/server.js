@@ -50,6 +50,36 @@ let devices = [
   { id: "dev3", name: "Digital Board", deviceId: "SN-DB-001", ipAddress: "192.168.1.103", macAddress: "AA:BB:CC:DD:EE:03", isOnline: true, rssi: -72, lastConnected: new Date(Date.now() - 20000).toISOString(),  type: "digital-board" },
 ];
 
+function setDeviceOnline(type, isOnline) {
+  const device = devices.find(d => d.type === type);
+  if (device) {
+    device.isOnline = isOnline;
+    device.lastConnected = new Date().toISOString();
+  }
+}
+
+function rebootBoard(board, deviceType, updateEvent) {
+  setDeviceOnline(deviceType, false);
+  board.relays.forEach(r => { r.status = "offline"; });
+  io.emit(updateEvent, board);
+  io.emit("devices:update", devices);
+  io.emit("dashboard:update", getDashboardData());
+
+  setTimeout(() => {
+    setDeviceOnline(deviceType, true);
+    board.relays.forEach(r => { r.status = "normal"; });
+    io.emit(updateEvent, board);
+    io.emit("devices:update", devices);
+    io.emit("dashboard:update", getDashboardData());
+  }, 2500);
+}
+
+function rebootSystem() {
+  console.log("Hardware command queued: SYSTEM_REBOOT");
+  rebootBoard(mainBoard, "main-board", "main-board:update");
+  rebootBoard(digitalBoard, "digital-board", "digital-board:update");
+}
+
 // ── Live fluctuation ──────────────────────────────────────────────
 let voltage = 220.4, current = 2.1, power = 462.0,
     energy = 1.84, temperature = 24.0, humidity = 45.0;
@@ -157,6 +187,11 @@ io.on("connection", (socket) => {
     console.log(`Main shutdown → ${enabled}`);
   });
 
+  socket.on("main-board:reboot", () => {
+    rebootBoard(mainBoard, "main-board", "main-board:update");
+    console.log(`Main board reboot requested`);
+  });
+
   // ── Global system controls ──────────────────────────────────────
   socket.on("system:master-unlock-all", () => {
     mainBoard.masterLockEnabled = false;
@@ -209,6 +244,11 @@ io.on("connection", (socket) => {
     digitalBoard.masterLockEnabled = enabled;
     io.emit("digital-board:update", digitalBoard);
     console.log(`Digital master lock → ${enabled}`);
+  });
+
+  socket.on("digital-board:reboot", () => {
+    rebootBoard(digitalBoard, "digital-board", "digital-board:update");
+    console.log(`Digital board reboot requested`);
   });
 
   // Individual relay lock (Digital Board)

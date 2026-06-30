@@ -143,7 +143,6 @@ export default function AcScreen() {
       if (action === 'set_temperature') return { ...prev, temperature: value as number };
       if (action === 'set_mode') return { ...prev, mode: value as AcStatus['mode'] };
       if (action === 'set_fan_speed') return { ...prev, fanSpeed: value as AcStatus['fanSpeed'] };
-      if (action === 'toggle_swing') return { ...prev, swingOn: !prev.swingOn };
       return prev;
     });
     if (!offline) sendAcCommand(action, value);
@@ -273,25 +272,6 @@ export default function AcScreen() {
         })}
       </View>
 
-      {/* Swing */}
-      <Text style={styles.sectionTitle}>SWING</Text>
-      <TouchableOpacity
-        onPress={() => send('toggle_swing')}
-        style={[styles.swingCard, { borderColor: data.swingOn ? colors.primary : colors.border, backgroundColor: data.swingOn ? colors.primary + '12' : colors.card }]}
-        activeOpacity={0.8}
-      >
-        <View style={[styles.swingIcon, { backgroundColor: data.swingOn ? colors.primary + '22' : colors.secondary }]}>
-          <Icon name="refresh-cw" size={18} color={data.swingOn ? colors.primary : colors.mutedForeground} />
-        </View>
-        <Text style={[styles.swingText, { color: data.swingOn ? colors.primary : colors.foreground }]}>
-          Swing {data.swingOn ? 'ON' : 'OFF'}
-        </Text>
-        <View style={[styles.swingTag, { backgroundColor: data.swingOn ? colors.primary : colors.border }]}>
-          <Text style={[styles.swingTagText, { color: data.swingOn ? colors.background : colors.mutedForeground }]}>
-            {data.swingOn ? 'ACTIVE' : 'OFF'}
-          </Text>
-        </View>
-      </TouchableOpacity>
     </ScrollView>
   );
 }
@@ -337,9 +317,4 @@ const styles = StyleSheet.create({
   fanBtnInactive: { backgroundColor: 'transparent' },
   fanLabelActive: { color: colors.background, fontWeight: '700' },
   fanLabelInactive: { color: colors.mutedForeground, fontWeight: '500' },
-  swingCard: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 16, borderWidth: 1, padding: 16 },
-  swingIcon: { width: 42, height: 42, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
-  swingText: { flex: 1, fontSize: 15, fontWeight: '600' },
-  swingTag: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
-  swingTagText: { fontSize: 11, fontWeight: '800' },
 });
