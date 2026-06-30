@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, RefreshControl, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -24,12 +24,15 @@ export default function MainBoardScreen() {
   const [data, setData] = useState<MainBoardStatus>(DEFAULT_DATA);
   const [offline, setOffline] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const hasLiveDataRef = useRef(false);
 
   // ── Load cached data on app start ──────────────────────────────
   useEffect(() => {
     AsyncStorage.getItem(CACHE_KEY).then(raw => {
       if (!raw) return;
-      try { setData(JSON.parse(raw)); } catch {}
+      try {
+        if (!hasLiveDataRef.current) setData(JSON.parse(raw));
+      } catch {}
     });
   }, []);
 
@@ -37,6 +40,7 @@ export default function MainBoardScreen() {
 
   useEffect(() => {
     const removeBoard = subscribeToMainBoard(status => {
+      hasLiveDataRef.current = true;
       setData(status);
       setOffline(false);
       setRefreshing(false);

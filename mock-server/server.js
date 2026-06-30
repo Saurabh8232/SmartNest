@@ -93,11 +93,15 @@ function tick() {
 setInterval(tick, 3000);
 
 function getDashboardData() {
+  const activeMainRelays = mainBoard.relays.filter(r => r.isOn).length;
+  const activeDigitalRelays = digitalBoard.relays.filter(r => r.isOn).length;
+  const totalRelayCurrent = +(mainBoard.totalCurrent + digitalBoard.totalCurrent).toFixed(2);
+
   return {
     systemOnline: true,
     totalDevices: devices.length,
-    activeRelays: mainBoard.relays.filter(r => r.isOn).length,
-    totalCurrent: mainBoard.totalCurrent,
+    activeRelays: activeMainRelays + activeDigitalRelays,
+    totalCurrent: totalRelayCurrent,
     voltage, current, power, energy,
     frequency: 50.0, powerFactor: 0.92,
     lastUpdated: new Date().toISOString(),
@@ -125,6 +129,7 @@ io.on("connection", (socket) => {
     }
     mainBoard.totalCurrent = +mainBoard.relays.reduce((s, r) => s + r.current, 0).toFixed(2);
     io.emit("main-board:update", mainBoard);
+    io.emit("dashboard:update", getDashboardData());
     console.log(`Main relay ${relayId} → ${action}`);
   });
 
@@ -146,7 +151,9 @@ io.on("connection", (socket) => {
   socket.on("main-board:master-shutdown", ({ enabled }) => {
     mainBoard.shutdownEnabled = enabled;
     if (enabled) mainBoard.relays.forEach(r => { r.isOn = false; r.current = 0; });
+    mainBoard.totalCurrent = +mainBoard.relays.reduce((s, r) => s + r.current, 0).toFixed(2);
     io.emit("main-board:update", mainBoard);
+    io.emit("dashboard:update", getDashboardData());
     console.log(`Main shutdown → ${enabled}`);
   });
 
@@ -164,7 +171,9 @@ io.on("connection", (socket) => {
   socket.on("system:master-shutdown", ({ enabled }) => {
     mainBoard.shutdownEnabled = enabled;
     if (enabled) mainBoard.relays.forEach(r => { r.isOn = false; r.current = 0; });
+    mainBoard.totalCurrent = +mainBoard.relays.reduce((s, r) => s + r.current, 0).toFixed(2);
     io.emit("main-board:update", mainBoard);
+    io.emit("dashboard:update", getDashboardData());
     console.log(`System shutdown → ${enabled}`);
   });
 
@@ -176,6 +185,7 @@ io.on("connection", (socket) => {
     digitalBoard.totalCurrent = 0;
     io.emit("main-board:update", mainBoard);
     io.emit("digital-board:update", digitalBoard);
+    io.emit("dashboard:update", getDashboardData());
     console.log(`System: shutdown-all (one-shot — relays OFF, no lock, controls still work)`);
   });
 
@@ -191,6 +201,7 @@ io.on("connection", (socket) => {
     }
     digitalBoard.totalCurrent = +digitalBoard.relays.reduce((s, r) => s + r.current, 0).toFixed(2);
     io.emit("digital-board:update", digitalBoard);
+    io.emit("dashboard:update", getDashboardData());
     console.log(`Digital relay ${relayId} → ${action}`);
   });
 

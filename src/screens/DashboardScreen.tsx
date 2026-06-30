@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   Alert,
   RefreshControl, ScrollView, StyleSheet,
@@ -55,6 +55,7 @@ export default function DashboardScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [powerHistory, setPowerHistory] = useState<TimeSeriesPoint[]>([]);
   const [currentHistory, setCurrentHistory] = useState<TimeSeriesPoint[]>([]);
+  const hasLiveDashboardDataRef = useRef(false);
 
   // ── Load cached data on app start ─────────────────────────────
   useEffect(() => {
@@ -62,9 +63,11 @@ export default function DashboardScreen() {
       if (!raw) return;
       try {
         const cached = JSON.parse(raw);
-        if (cached.data)                    setData(cached.data);
-        if (cached.powerHistory?.length)    setPowerHistory(cached.powerHistory);
-        if (cached.currentHistory?.length)  setCurrentHistory(cached.currentHistory);
+        if (!hasLiveDashboardDataRef.current) {
+          if (cached.data)                    setData(cached.data);
+          if (cached.powerHistory?.length)    setPowerHistory(cached.powerHistory);
+          if (cached.currentHistory?.length)  setCurrentHistory(cached.currentHistory);
+        }
       } catch {}
     });
   }, []);
@@ -91,6 +94,7 @@ export default function DashboardScreen() {
 
   useEffect(() => {
     const removeDashboard = subscribeToDashboard(dash => {
+      hasLiveDashboardDataRef.current = true;
       setData(dash);
       setOffline(false);
       setRefreshing(false);

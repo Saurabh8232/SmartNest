@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, RefreshControl, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -41,12 +41,15 @@ export default function DigitalBoardScreen() {
   const [dash, setDash] = useState<DashboardData>(DEFAULT_DASH);
   const [offline, setOffline] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const hasLiveBoardDataRef = useRef(false);
 
   // ── Load cached data on app start ──────────────────────────────
   useEffect(() => {
     AsyncStorage.getItem(CACHE_KEY).then(raw => {
       if (!raw) return;
-      try { setBoard(JSON.parse(raw)); } catch {}
+      try {
+        if (!hasLiveBoardDataRef.current) setBoard(JSON.parse(raw));
+      } catch {}
     });
   }, []);
 
@@ -57,6 +60,7 @@ export default function DigitalBoardScreen() {
 
   useEffect(() => {
     const removeBoard = subscribeToDigitalBoard(status => {
+      hasLiveBoardDataRef.current = true;
       setBoard(status);
       setOffline(false);
       setRefreshing(false);
