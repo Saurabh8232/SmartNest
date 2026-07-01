@@ -1,14 +1,23 @@
 import { io, Socket } from 'socket.io-client';
-import { SOCKET_URL } from '../config/communication';
+import { DEVICE_ID, SOCKET_URL } from '../config/communication';
 
 type Listener<T = unknown> = (payload: T) => void;
 
 class SocketManager {
   private socket: Socket | null = null;
+  private authToken: string | null = null;
+
+  setAuthToken(token: string | null): void {
+    this.authToken = token;
+    if (this.socket) {
+      this.socket.auth = { token: token ?? '' };
+    }
+  }
 
   connect(): Socket {
     if (!this.socket) {
       this.socket = io(SOCKET_URL, {
+        auth: { token: this.authToken ?? '' },
         autoConnect: false,
         transports: ['websocket'],
         reconnection: true,
@@ -16,6 +25,14 @@ class SocketManager {
         reconnectionDelay: 1000,
         reconnectionDelayMax: 10000,
         timeout: 10000,
+      });
+
+      this.socket.on('connect', () => {
+        this.socket?.emit('subscribe', DEVICE_ID);
+      });
+
+      this.socket.on('reconnect', () => {
+        this.socket?.emit('subscribe', DEVICE_ID);
       });
     }
 

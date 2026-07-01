@@ -72,7 +72,7 @@ export default function DevicesScreen() {
   }, []);
 
   useEffect(() => {
-    const removeDevices = subscribeToDevices(nextDevices => {
+    const removeDevices = subscribeToDevices((nextDevices: IoTDevice[]) => {
       setDevices(nextDevices);
       setOffline(false);
       setRefreshing(false);

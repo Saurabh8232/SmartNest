@@ -124,7 +124,7 @@ export default function HistoryScreen() {
         })}
         <TouchableOpacity
           onPress={() => Alert.alert('Custom Range', 'Custom date range coming soon.')}
-          style={[styles.periodBtn, { backgroundColor: colors.card, borderColor: colors.border, gap: 5 }]}
+          style={[styles.periodBtn, styles.customPeriodBtn]}
         >
           <Icon name="calendar" size={11} color={colors.mutedForeground} />
           <Text style={[styles.periodText, { color: colors.mutedForeground }]}>Custom</Text>
@@ -236,7 +236,7 @@ export default function HistoryScreen() {
                 <View style={styles.activityIcon}>
                   <Icon name="wind" size={13} color="#38bdf8" />
                 </View>
-                <View style={{ flex: 1 }}>
+                <View style={styles.flex1}>
                   <Text style={styles.recTitle}>{r.action}</Text>
                   {r.oldValue && r.newValue && (
                     <Text style={styles.recMeta}>{r.oldValue} → {r.newValue}</Text>
@@ -258,6 +258,7 @@ export default function HistoryScreen() {
 const styles = StyleSheet.create({
   scroll: { flex: 1, backgroundColor: colors.background },
   content: { paddingHorizontal: 16, gap: 12 },
+  flex1: { flex: 1 },
 
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 2 },
   title: { color: colors.foreground, fontSize: 26, fontWeight: '800', letterSpacing: -0.5 },
@@ -269,6 +270,7 @@ const styles = StyleSheet.create({
 
   periodRow: { flexDirection: 'row', gap: 8 },
   periodBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 10, borderRadius: 22, borderWidth: 1 },
+  customPeriodBtn: { backgroundColor: colors.card, borderColor: colors.border, gap: 5 },
   periodText: { fontSize: 12, fontWeight: '600' },
 
   tabScroll: { flexDirection: 'row', gap: 8, paddingRight: 4 },

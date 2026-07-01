@@ -3,13 +3,56 @@ export interface TimeSeriesPoint {
   value: number;
 }
 
+export interface SensorsPayload {
+  voltage: number;
+  current: { main: number; digital: number; ac: number; };
+  power:   { ac: number; };
+  energy:  { acKwh: number; mainKwh: number; digitalKwh: number; };
+  environment: { temperatureC: number; humidityPct: number; };
+  lastUpdated: string;
+}
+
+export interface RelayItem {
+  relay: number;
+  state: boolean;
+  locked: boolean;
+  runtimeSec: number;
+}
+
+export interface RelaysPayload {
+  items: RelayItem[];
+  masterLock: boolean;
+  digitalSwitch: boolean;
+  lastUpdated: string;
+}
+
+export interface StatusPayload {
+  uptime: number;
+  wifi: { ssid: string; rssi: number; };
+  mqttStatus: number;
+  sd: { ok: boolean; total: number; used: number; };
+  digitalOnline: boolean;
+  pzemOnline: boolean;
+  pzemHealth: boolean;
+  dhtOk: boolean;
+  lastUpdated: string;
+}
+
+export interface CommandAck {
+  cmd_id: string;
+  command: string;
+  ok: boolean;
+  message: string;
+  timestamp: number;
+}
+
 export interface DashboardData {
   voltage: number;
   current: number;
   power: number;
   energy: number;
-  frequency: number;
-  powerFactor: number;
+  frequency?: number;
+  powerFactor?: number;
   totalDevices: number;
   activeRelays: number;
   totalCurrent: number;
@@ -37,8 +80,8 @@ export interface MainBoardStatus {
   masterLockEnabled: boolean;
   shutdownEnabled: boolean;
   relays: Relay[];
-  mainCurrent: number;       // matches hardware: main_current
-  mainEnergyKwh: number;     // matches hardware: main_energy_kwh
+  mainCurrent: number;
+  mainEnergyKwh: number;
 }
 
 export interface DigitalRelay {
@@ -62,13 +105,38 @@ export interface DigitalBoardStatus {
 export interface AcStatus {
   isOn: boolean;
   temperature: number;
-  fanSpeed: 'auto' | 'min' | 'low' | 'med' | 'high' | 'max'; // matches hardware ac_set fan values
+  fanSpeed: 'auto' | 'min' | 'low' | 'med' | 'high' | 'max';
   swingOn: boolean;
   irBlasterAvailable: boolean;
   acCurrent: number;
-  acEnergyKwh: number;
   acPower: number;
+  acEnergyKwh: number;
   pzemCumulativeEnergyKwh: number;
+}
+
+export interface Alert {
+  id: string;
+  type: 'electrical' | 'communication' | 'relay';
+  code: string;
+  title: string;
+  description: string;
+  severity: 'critical' | 'warning' | 'info';
+  suggestedSolution: string;
+  timestamp: string;
+  isResolved: boolean;
+  deviceName?: string;
+}
+
+export interface IoTDevice {
+  id: string;
+  name: string;
+  deviceId: string;
+  ipAddress: string;
+  macAddress: string;
+  isOnline: boolean;
+  rssi: number;
+  lastConnected: string;
+  type: 'main-board' | 'ac-controller' | 'digital-board';
 }
 
 export interface HistoryData {
@@ -89,29 +157,4 @@ export interface AcRecord {
   oldValue?: string;
   newValue?: string;
   timestamp: string;
-}
-
-export interface IoTDevice {
-  id: string;
-  name: string;
-  deviceId: string;
-  ipAddress: string;
-  macAddress: string;
-  isOnline: boolean;
-  rssi: number;
-  lastConnected: string;
-  type: 'main-board' | 'digital-board' | 'ac-controller' | 'sensor';
-}
-
-export interface Alert {
-  id: string;
-  type: 'electrical' | 'communication' | 'relay';
-  code: string;
-  title: string;
-  description: string;
-  severity: 'critical' | 'warning' | 'info';
-  suggestedSolution: string;
-  timestamp: string;
-  isResolved: boolean;
-  deviceName?: string;
 }

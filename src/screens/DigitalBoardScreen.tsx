@@ -12,14 +12,11 @@ import {
   requestDigitalBoard,
   subscribeToConnection,
   subscribeToDigitalBoard,
-  subscribeToShutdownAll,
 } from '../socket/liveCommunication';
 import colors from '../constants/colors';
 
 const CACHE_KEY = '@smartnest_digitalboard_v1';
 
-// digitalCurrent matches hardware: digital_current (ACS712 for relay 7)
-// digitalEnergyKwh matches hardware: digital_energy_kwh (cumulative energy relay 7)
 const DEFAULT_DATA: DigitalBoardStatus = {
   relays: [],
   masterLockEnabled: false,
@@ -38,7 +35,6 @@ export default function DigitalBoardScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const hasLiveBoardDataRef = useRef(false);
 
-  // ── Load cached data on app start ──────────────────────────────
   useEffect(() => {
     AsyncStorage.getItem(CACHE_KEY).then(raw => {
       if (!raw) return;
@@ -60,32 +56,15 @@ export default function DigitalBoardScreen() {
       setRefreshing(false);
       AsyncStorage.setItem(CACHE_KEY, JSON.stringify(status)).catch(() => {});
     });
+
     const removeConnection = subscribeToConnection(
       () => { setOffline(false); load(); },
       () => { setOffline(true); setRefreshing(false); },
     );
-    const removeShutdownAll = subscribeToShutdownAll(() => {
-      setBoard(prev => {
-        const next = {
-          ...prev,
-          digitalCurrent: 0,
-          digitalEnergyKwh: prev.digitalEnergyKwh, // energy is cumulative — keep it
-          relays: prev.relays.map(relay => ({
-            ...relay,
-            isOn: false,
-            current: 0,
-            power: 0,
-          })),
-        };
-        AsyncStorage.setItem(CACHE_KEY, JSON.stringify(next)).catch(() => {});
-        return next;
-      });
-      setRefreshing(false);
-    });
+
     return () => {
       removeBoard();
       removeConnection();
-      removeShutdownAll();
     };
   }, [load]);
 
@@ -100,7 +79,7 @@ export default function DigitalBoardScreen() {
       relays: prev.relays.map((r, i) => i === 0 ? { ...r, isOn: next } : r),
     }));
     if (offline) return;
-    controlDigitalRelay(relay.id, action);
+    controlDigitalRelay(relay.id, action).catch(() => {});
   }, [relay, isRelayLocked, offline]);
 
   const handleRelayLock = useCallback(() => {
@@ -120,7 +99,7 @@ export default function DigitalBoardScreen() {
               ...prev,
               relays: prev.relays.map((r, i) => i === 0 ? { ...r, locked: next } : r),
             }));
-            if (!offline) lockDigitalRelay(relay.id, next);
+            if (!offline) lockDigitalRelay(relay.id, next).catch(() => {});
           },
         },
       ],
@@ -137,19 +116,18 @@ export default function DigitalBoardScreen() {
       'The backend will send a reboot command to the hardware for the full system.',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Reboot', onPress: rebootSystem },
+        { text: 'Reboot', onPress: () => rebootSystem().catch(() => {}) },
       ],
     );
   }, [offline]);
 
-  // Board-specific electrical readings — matches hardware digital_current and digital_energy_kwh
   const params = [
-    { label: 'Digital Current', value: `${board.digitalCurrent.toFixed(2)}`,   unit: 'A',   icon: 'activity',          color: colors.primary },
-    { label: 'Digital Energy',  value: `${board.digitalEnergyKwh.toFixed(3)}`, unit: 'kWh', icon: 'battery-charging',  color: colors.success },
+    { label: 'Digital Current', value: `${board.digitalCurrent.toFixed(2)}`,   unit: 'A',   icon: 'activity',         color: colors.primary },
+    { label: 'Digital Energy',  value: `${board.digitalEnergyKwh.toFixed(3)}`, unit: 'kWh', icon: 'battery-charging', color: colors.success },
   ];
 
   const relayStatusColor =
-    !relay              ? colors.mutedForeground :
+    !relay                     ? colors.mutedForeground :
     relay.status === 'error'   ? colors.destructive :
     relay.status === 'offline' ? colors.mutedForeground :
     relay.isOn                 ? colors.success :
@@ -186,7 +164,7 @@ export default function DigitalBoardScreen() {
         )}
       </View>
 
-      {/* Board-Specific Electrical Parameters */}
+      {/* Board Electrical Parameters */}
       <Text style={styles.sectionTitle}>ELECTRICAL PARAMETERS</Text>
       <View style={styles.paramsGrid}>
         {params.map(p => (
