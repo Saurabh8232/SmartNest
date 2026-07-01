@@ -1,4 +1,5 @@
 import { REST_BASE_URL } from '../config/communication';
+import { authFetch } from '../authentication/authService';
 import {
   AcRecord,
   EnergyRecord,
@@ -11,7 +12,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const timeoutId = setTimeout(() => controller.abort(), 8000);
 
   try {
-    const response = await fetch(`${REST_BASE_URL}${path}`, {
+    const response = await authFetch(`${REST_BASE_URL}${path}`, {
       ...options,
       headers: {
         'Content-Type': 'application/json',

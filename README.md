@@ -1,97 +1,154 @@
-This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
+# SmartNest
 
-# Getting Started
+SmartNest is a React Native control app for a hybrid IoT backend that serves REST commands and Socket.IO telemetry for the main board, digital board, AC controller, alerts, and dashboard views.
 
-> **Note**: Make sure you have completed the [Set Up Your Environment](https://reactnative.dev/docs/set-up-your-environment) guide before proceeding.
+## Stack
 
-## Step 1: Start Metro
+- React Native 0.85
+- TypeScript
+- Socket.IO client
+- AsyncStorage for local session and screen cache
 
-First, you will need to run **Metro**, the JavaScript build tool for React Native.
+## Setup
 
-To start the Metro dev server, run the following command from the root of your React Native project:
+Update the backend host in [src/config/communication.ts](src/config/communication.ts) before running the app.
+
+### Start the app
 
 ```sh
-# Using npm
+npm install
 npm start
-
-# OR using Yarn
-yarn start
 ```
-
-## Step 2: Build and run your app
-
-With Metro running, open a new terminal window/pane from the root of your React Native project, and use one of the following commands to build and run your Android or iOS app:
 
 ### Android
 
 ```sh
-# Using npm
 npm run android
-
-# OR using Yarn
-yarn android
 ```
 
 ### iOS
 
-For iOS, remember to install CocoaPods dependencies (this only needs to be run on first clone or after updating native deps).
-
-The first time you create a new project, run the Ruby bundler to install CocoaPods itself:
-
 ```sh
 bundle install
-```
-
-Then, and every time you update your native dependencies, run:
-
-```sh
 bundle exec pod install
-```
-
-For more information, please visit [CocoaPods Getting Started guide](https://guides.cocoapods.org/using/getting-started.html).
-
-```sh
-# Using npm
 npm run ios
-
-# OR using Yarn
-yarn ios
 ```
 
-If everything is set up correctly, you should see your new app running in the Android Emulator, iOS Simulator, or your connected device.
+## Backend Integration
 
-This is one way to run your app — you can also build it directly from Android Studio or Xcode.
+The app expects a backend that exposes:
 
-## Step 3: Modify your app
+- `POST /api/auth/login`
+- `POST /api/auth/refresh`
+- `POST /api/auth/logout`
+- Device REST endpoints under `/api/device/:deviceId/...`
+- Socket.IO events such as `subscribe`, `device:sensors`, `device:relays`, `device:status`, `command:ack`, and the dashboard/device update events used by the screens
 
-Now that you have successfully run the app, let's make changes!
+### Authentication
 
-Open `App.tsx` in your text editor of choice and make some changes. When you save, your app will automatically update and reflect these changes — this is powered by [Fast Refresh](https://reactnative.dev/docs/fast-refresh).
+The auth layer stores the current session locally and keeps the Socket.IO token in sync.
 
-When you want to forcefully reload, for example to reset the state of your app, you can perform a full reload:
+- Real backend auth is used when the auth endpoints are available.
+- If the auth endpoints are unavailable in a local/mock environment, the app falls back to a demo session so the UI can still run.
+- Access token refresh is handled automatically when a request returns `401` and a refresh token is available.
 
-- **Android**: Press the <kbd>R</kbd> key twice or select **"Reload"** from the **Dev Menu**, accessed via <kbd>Ctrl</kbd> + <kbd>M</kbd> (Windows/Linux) or <kbd>Cmd ⌘</kbd> + <kbd>M</kbd> (macOS).
-- **iOS**: Press <kbd>R</kbd> in iOS Simulator.
+### Realtime behavior
 
-## Congratulations! :tada:
+- The socket manager reconnects automatically.
+- The app re-subscribes after reconnect.
+- Commands that return `cmd_id` should be tracked until `command:ack` arrives.
 
-You've successfully run and modified your React Native App. :partying_face:
+## Project Structure
 
-### Now what?
+```text
+SmartNest/
+├── App.tsx
+├── index.js
+├── package.json
+├── README.md
+├── app.json
+├── babel.config.js
+├── metro.config.js
+├── tsconfig.json
+├── android/
+├── ios/
+├── mock-server/
+│   ├── package.json
+│   └── server.js
+├── src/
+│   ├── api/
+│   │   └── historyApi.ts
+│   ├── authentication/
+│   │   ├── AuthContext.tsx
+│   │   └── authService.ts
+│   ├── components/
+│   │   ├── MetricCard.tsx
+│   │   ├── MiniChart.tsx
+│   │   └── RelayToggle.tsx
+│   ├── config/
+│   │   └── communication.ts
+│   ├── constants/
+│   │   └── colors.ts
+│   ├── screens/
+│   │   ├── AccountScreen.tsx
+│   │   ├── AcScreen.tsx
+│   │   ├── AlertsScreen.tsx
+│   │   ├── DashboardScreen.tsx
+│   │   ├── DevicesScreen.tsx
+│   │   ├── DigitalBoardScreen.tsx
+│   │   ├── HistoryScreen.tsx
+│   │   ├── LoginScreen.tsx
+│   │   └── MainBoardScreen.tsx
+│   ├── socket/
+│   │   ├── events.ts
+│   │   ├── liveCommunication.ts
+│   │   └── SocketManager.ts
+│   └── types/
+│       └── communication.ts
+└── __tests__/
+```
 
-- If you want to add this new React Native code to an existing application, check out the [Integration guide](https://reactnative.dev/docs/integration-with-existing-apps).
-- If you're curious to learn more about React Native, check out the [docs](https://reactnative.dev/docs/getting-started).
+## What Each Area Does
 
-# Troubleshooting
+- `src/authentication/` keeps the active session, login state, token persistence, and logout flow.
+- `src/api/` contains REST-only data loaders, including the history page requests.
+- `src/socket/` owns Socket.IO connection setup, subscriptions, and command/event helpers.
+- `src/screens/` contains the user-facing pages for dashboard, devices, board controls, AC, alerts, history, login, and account.
+- `src/components/` contains shared UI pieces used by multiple screens.
+- `mock-server/` is the local backend simulator for testing without the real server.
 
-If you're having issues getting the above steps to work, see the [Troubleshooting](https://reactnative.dev/docs/troubleshooting) page.
+## Screens
 
-# Learn More
+- `LoginScreen` handles authentication entry.
+- `DashboardScreen` shows live system summary, alerts, and trend cards.
+- `DevicesScreen` lists available devices and routes into the device-specific control screens.
+- `MainBoardScreen` manages the main relay board, relay lock state, lighting group, shutdown, and reboot actions.
+- `DigitalBoardScreen` manages the digital relay, electrical metrics, and reboot actions.
+- `AcScreen` manages AC power, temperature, fan speed, and live telemetry.
+- `AlertsScreen` shows unresolved alerts and lets you mark them resolved.
+- `AccountScreen` shows the current session and sign-out controls.
+- `HistoryScreen` is the analytics/history view and is handled separately because its backend area is still being developed.
 
-To learn more about React Native, take a look at the following resources:
+## History Page Status
 
-- [React Native Website](https://reactnative.dev) - learn more about React Native.
-- [Getting Started](https://reactnative.dev/docs/environment-setup) - an **overview** of React Native and how setup your environment.
-- [Learn the Basics](https://reactnative.dev/docs/getting-started) - a **guided tour** of the React Native **basics**.
-- [Blog](https://reactnative.dev/blog) - read the latest official React Native **Blog** posts.
-- [`@facebook/react-native`](https://github.com/facebook/react-native) - the Open Source; GitHub **repository** for React Native.
+The history page is currently under processing on the backend side.
+
+- The UI is present in [src/screens/HistoryScreen.tsx](src/screens/HistoryScreen.tsx).
+- The REST loader lives in [src/api/historyApi.ts](src/api/historyApi.ts).
+- The screen currently supports Energy and AC tabs, with Today, 7 Days, 30 Days, and a custom-range placeholder.
+- Do not change the history backend contract without permission while processing is still in progress.
+
+## Scripts
+
+- `npm start` - start Metro
+- `npm run android` - launch Android
+- `npm run ios` - launch iOS
+- `npm run serve:db` - start the JSON server
+- `npm run serve:socket` - start the mock Socket.IO server
+- `npm test` - run Jest
+- `npx tsc --noEmit` - typecheck
+
+## Notes
+
+- If you change the backend host or port, update `REST_BASE_URL` and `SOCKET_URL` together.
+- The app can fall back to a demo session when the auth backend is unavailable, which is useful for local UI testing.

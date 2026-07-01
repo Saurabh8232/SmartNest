@@ -6,10 +6,12 @@ import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Feather';
 import {
   controlDigitalRelay,
+  CommandAck,
   DigitalBoardStatus,
   lockDigitalRelay,
   rebootSystem,
   requestDigitalBoard,
+  subscribeToCommandAck,
   subscribeToConnection,
   subscribeToDigitalBoard,
 } from '../socket/liveCommunication';
@@ -33,7 +35,9 @@ export default function DigitalBoardScreen() {
   const [board, setBoard] = useState<DigitalBoardStatus>(DEFAULT_DATA);
   const [offline, setOffline] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [commandPending, setCommandPending] = useState(false);
   const hasLiveBoardDataRef = useRef(false);
+  const pendingCommandIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     AsyncStorage.getItem(CACHE_KEY).then(raw => {
@@ -62,29 +66,76 @@ export default function DigitalBoardScreen() {
       () => { setOffline(true); setRefreshing(false); },
     );
 
+    const removeAck = subscribeToCommandAck((ack: CommandAck) => {
+      if (ack.cmd_id !== pendingCommandIdRef.current) return;
+      pendingCommandIdRef.current = null;
+      setCommandPending(false);
+
+      if (!ack.ok) {
+        Alert.alert('Command Failed', ack.message || 'The command was rejected by the backend.');
+        load();
+      }
+    });
+
     return () => {
       removeBoard();
       removeConnection();
+      removeAck();
     };
   }, [load]);
 
   const relay = board.relays[0] ?? null;
   const isRelayLocked = (relay as any)?.locked ?? false;
 
+  const runCommand = useCallback(async (
+    execute: () => Promise<{ cmd_id?: string }>,
+    onSuccess: (cmdId: string | null) => void,
+    onFailure: () => void,
+  ) => {
+    if (offline || commandPending) return;
+
+    try {
+      const result = await execute();
+      const cmdId = result.cmd_id ?? null;
+      if (cmdId) {
+        pendingCommandIdRef.current = cmdId;
+        setCommandPending(true);
+      }
+      onSuccess(cmdId);
+      if (!cmdId) {
+        setCommandPending(false);
+      }
+    } catch {
+      onFailure();
+      setCommandPending(false);
+      pendingCommandIdRef.current = null;
+    }
+  }, [commandPending, offline]);
+
   const handleToggle = useCallback((next: boolean) => {
-    if (!relay || isRelayLocked) return;
+    if (!relay || isRelayLocked || offline || commandPending) return;
     const action = next ? 'on' : 'off';
+    const previousValue = relay.isOn;
     setBoard(prev => ({
       ...prev,
       relays: prev.relays.map((r, i) => i === 0 ? { ...r, isOn: next } : r),
     }));
-    if (offline) return;
-    controlDigitalRelay(relay.id, action).catch(() => {});
-  }, [relay, isRelayLocked, offline]);
+    runCommand(
+      () => controlDigitalRelay(relay.id, action),
+      () => {},
+      () => {
+        setBoard(prev => ({
+          ...prev,
+          relays: prev.relays.map((r, i) => i === 0 ? { ...r, isOn: previousValue } : r),
+        }));
+      },
+    );
+  }, [relay, isRelayLocked, offline, commandPending, runCommand]);
 
   const handleRelayLock = useCallback(() => {
-    if (!relay) return;
+    if (!relay || offline || commandPending) return;
     const next = !isRelayLocked;
+    const previousLocked = isRelayLocked;
     Alert.alert(
       next ? 'Lock Relay?' : 'Unlock Relay?',
       next
@@ -99,15 +150,24 @@ export default function DigitalBoardScreen() {
               ...prev,
               relays: prev.relays.map((r, i) => i === 0 ? { ...r, locked: next } : r),
             }));
-            if (!offline) lockDigitalRelay(relay.id, next).catch(() => {});
+            runCommand(
+              () => lockDigitalRelay(relay.id, next),
+              () => {},
+              () => {
+                setBoard(prev => ({
+                  ...prev,
+                  relays: prev.relays.map((r, i) => i === 0 ? { ...r, locked: previousLocked } : r),
+                }));
+              },
+            );
           },
         },
       ],
     );
-  }, [relay, isRelayLocked, offline]);
+  }, [relay, isRelayLocked, offline, commandPending, runCommand]);
 
   const handleReboot = useCallback(() => {
-    if (offline) {
+    if (offline || commandPending) {
       Alert.alert('System Offline', 'Connect to the backend before rebooting the system.');
       return;
     }
@@ -116,10 +176,19 @@ export default function DigitalBoardScreen() {
       'The backend will send a reboot command to the hardware for the full system.',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Reboot', onPress: () => rebootSystem().catch(() => {}) },
+        {
+          text: 'Reboot',
+          onPress: () => {
+            runCommand(
+              () => rebootSystem(),
+              () => {},
+              () => {},
+            );
+          },
+        },
       ],
     );
-  }, [offline]);
+  }, [offline, commandPending, runCommand]);
 
   const params = [
     { label: 'Digital Current', value: `${board.digitalCurrent.toFixed(2)}`,   unit: 'A',   icon: 'activity',         color: colors.primary },
@@ -220,7 +289,8 @@ export default function DigitalBoardScreen() {
             </View>
             <TouchableOpacity
               onPress={handleRelayLock}
-              style={[styles.lockBtn, { backgroundColor: isRelayLocked ? colors.warning + '22' : colors.secondary }]}
+              disabled={commandPending}
+              style={[styles.lockBtn, { backgroundColor: isRelayLocked ? colors.warning + '22' : colors.secondary }, commandPending && styles.disabledBtn]}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
               <Icon name={isRelayLocked ? 'lock' : 'unlock'} size={14} color={isRelayLocked ? colors.warning : colors.mutedForeground} />
@@ -228,7 +298,7 @@ export default function DigitalBoardScreen() {
             <Switch
               value={relay.isOn}
               onValueChange={handleToggle}
-              disabled={isRelayLocked || relay.status === 'offline'}
+              disabled={isRelayLocked || relay.status === 'offline' || commandPending}
               trackColor={{ false: colors.border, true: colors.success + '88' }}
               thumbColor={relay.isOn ? colors.success : colors.mutedForeground}
             />
@@ -259,6 +329,13 @@ export default function DigitalBoardScreen() {
         <View style={styles.offlineNote}>
           <Icon name="cloud-off" size={14} color={colors.warning} />
           <Text style={styles.offlineNoteText}>No backend connected — electrical data and relay status unavailable</Text>
+        </View>
+      )}
+
+      {commandPending && (
+        <View style={styles.pendingNote}>
+          <Icon name="clock" size={14} color={colors.primary} />
+          <Text style={styles.pendingNoteText}>Waiting for command acknowledgement...</Text>
         </View>
       )}
     </ScrollView>
@@ -305,4 +382,6 @@ const styles = StyleSheet.create({
   emptyDesc: { color: colors.mutedForeground, fontSize: 13, textAlign: 'center' },
   offlineNote: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.warning + '11', borderRadius: 10, padding: 12, borderWidth: 1, borderColor: colors.warning + '33' },
   offlineNoteText: { flex: 1, color: colors.warning, fontSize: 12 },
+  pendingNote: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.primary + '11', borderRadius: 10, padding: 12, borderWidth: 1, borderColor: colors.primary + '33' },
+  pendingNoteText: { flex: 1, color: colors.primary, fontSize: 12 },
 });

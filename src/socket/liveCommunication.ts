@@ -13,6 +13,7 @@ import {
 import { DEVICE_ID, REST_BASE_URL } from '../config/communication';
 import { SOCKET_EVENTS } from './events';
 import socketManager from './SocketManager';
+import { authFetch, getAccessToken, subscribeToSession } from '../authentication/authService';
 
 type Unsubscribe = () => void;
 
@@ -30,21 +31,18 @@ const DIGITAL_RELAY_NAMES: Record<number, string> = {
   7: 'Smart Plug 1',
 };
 
-// ── Auth token (set after login) ─────────────────────────────────
-let authToken: string | null = null;
+subscribeToSession(session => {
+  socketManager.setAuthToken(session?.accessToken ?? null);
+});
 
-export function setAuthToken(token: string | null): void {
-  authToken = token;
-  socketManager.setAuthToken(token);
-}
+socketManager.setAuthToken(getAccessToken());
 
 // ── REST helper ──────────────────────────────────────────────────
 async function apiPost(path: string, body?: object): Promise<{ cmd_id?: string }> {
-  const res = await fetch(`${REST_BASE_URL}${path}`, {
+  const res = await authFetch(`${REST_BASE_URL}${path}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
     },
     body: body ? JSON.stringify(body) : undefined,
   });
@@ -323,12 +321,12 @@ export async function rebootMainBoard(): Promise<void> {
 }
 
 // ── REST Commands — Digital Board ────────────────────────────────
-export async function controlDigitalRelay(_relayId: string, action: 'on' | 'off'): Promise<void> {
-  await apiPost(`/api/device/${DEVICE_ID}/relays/7`, { state: action === 'on' });
+export async function controlDigitalRelay(_relayId: string, action: 'on' | 'off'): Promise<{ cmd_id?: string }> {
+  return apiPost(`/api/device/${DEVICE_ID}/relays/7`, { state: action === 'on' });
 }
 
-export async function lockDigitalRelay(_relayId: string, locked: boolean): Promise<void> {
-  await apiPost(`/api/device/${DEVICE_ID}/relays/7/lock`, { locked });
+export async function lockDigitalRelay(_relayId: string, locked: boolean): Promise<{ cmd_id?: string }> {
+  return apiPost(`/api/device/${DEVICE_ID}/relays/7/lock`, { locked });
 }
 
 export async function setDigitalMasterLock(enabled: boolean): Promise<void> {
@@ -353,8 +351,8 @@ export async function shutdownAll(): Promise<void> {
   shutdownAllListeners.forEach(listener => listener());
 }
 
-export async function rebootSystem(): Promise<void> {
-  await apiPost(`/api/device/${DEVICE_ID}/system/reboot`);
+export async function rebootSystem(): Promise<{ cmd_id?: string }> {
+  return apiPost(`/api/device/${DEVICE_ID}/system/reboot`);
 }
 
 // ── REST Commands — AC ────────────────────────────────────────────

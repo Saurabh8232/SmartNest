@@ -12,18 +12,20 @@ export default function LoginScreen() {
   const insets = useSafeAreaInsets();
   const { login } = useAuth();
 
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
   const [error, setError] = useState('');
 
   const handleLogin = async () => {
     setError('');
-    if (!name.trim()) { setError('Please enter your name.'); return; }
-    if (!email.trim()) { setError('Please enter your email.'); return; }
+    if (!username.trim()) { setError('Please enter your username.'); return; }
     if (!password.trim()) { setError('Please enter a password.'); return; }
-    await login({ name: name.trim(), email: email.trim() });
+    try {
+      await login({ username: username.trim(), password });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to sign in.');
+    }
   };
 
   return (
@@ -49,33 +51,15 @@ export default function LoginScreen() {
 
           {/* Name */}
           <View style={styles.fieldWrap}>
-            <Text style={styles.fieldLabel}>FULL NAME</Text>
+            <Text style={styles.fieldLabel}>USERNAME</Text>
             <View style={styles.inputRow}>
               <Icon name="user" size={15} color={colors.mutedForeground} style={styles.inputIcon} />
               <TextInput
                 style={styles.input}
-                value={name}
-                onChangeText={setName}
-                placeholder="Your name"
+                value={username}
+                onChangeText={setUsername}
+                placeholder="admin"
                 placeholderTextColor={colors.mutedForeground}
-                autoCapitalize="words"
-                autoCorrect={false}
-              />
-            </View>
-          </View>
-
-          {/* Email */}
-          <View style={styles.fieldWrap}>
-            <Text style={styles.fieldLabel}>EMAIL</Text>
-            <View style={styles.inputRow}>
-              <Icon name="mail" size={15} color={colors.mutedForeground} style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                value={email}
-                onChangeText={setEmail}
-                placeholder="you@example.com"
-                placeholderTextColor={colors.mutedForeground}
-                keyboardType="email-address"
                 autoCapitalize="none"
                 autoCorrect={false}
               />
@@ -118,7 +102,7 @@ export default function LoginScreen() {
           </TouchableOpacity>
         </View>
 
-        <Text style={styles.footer}>SmartNest IoT Control · v1.0.0</Text>
+          <Text style={styles.footer}>SmartNest IoT Control · backend auth ready</Text>
       </View>
     </KeyboardAvoidingView>
   );

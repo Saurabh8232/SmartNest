@@ -134,12 +134,12 @@ export default function AccountScreen() {
       <View style={styles.profileCard}>
         <View style={styles.avatarWrap}>
          <Text style={styles.avatarInitial}>
-            {user?.name ? user.name.charAt(0).toUpperCase() : '?'}
+            {user?.username ? user.username.charAt(0).toUpperCase() : '?'}
           </Text>
         </View>
         <View style={styles.flex1}>
-         <Text style={styles.profileName}>{user?.name ?? 'Unknown User'}</Text>
-          <Text style={styles.profileDesc}>{user?.email ?? 'No email set'}</Text>
+         <Text style={styles.profileName}>{user?.username ?? 'Unknown User'}</Text>
+          <Text style={styles.profileDesc}>{user?.isDemo ? 'Demo session' : 'Authenticated session'}</Text>
         </View>
         <View style={styles.onlineBadge}>
           <View style={[styles.bDot, { backgroundColor: colors.success }]} />

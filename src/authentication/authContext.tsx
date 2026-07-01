@@ -1,17 +1,25 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
-const STORAGE_KEY = '@smartnest_user';
+import {
+  AuthSession,
+  loadStoredSession,
+  login as loginToBackend,
+  logout as logoutFromBackend,
+} from './authService';
 
 export interface UserProfile {
-  name: string;
-  email: string;
+  username: string;
+  isDemo: boolean;
+}
+
+export interface LoginCredentials {
+  username: string;
+  password: string;
 }
 
 interface AuthContextValue {
   user: UserProfile | null;
   loading: boolean;
-  login: (profile: UserProfile) => Promise<void>;
+  login: (credentials: LoginCredentials) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -27,21 +35,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    AsyncStorage.getItem(STORAGE_KEY).then(raw => {
-      if (raw) {
-        try { setUser(JSON.parse(raw)); } catch {}
+    loadStoredSession().then((session: AuthSession | null) => {
+      if (session) {
+        setUser({ username: session.username, isDemo: session.isDemo });
       }
+      setLoading(false);
+    }).catch(() => {
+      setUser(null);
       setLoading(false);
     });
   }, []);
 
-  const login = useCallback(async (profile: UserProfile) => {
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(profile));
-    setUser(profile);
+  const login = useCallback(async (credentials: LoginCredentials) => {
+    const session = await loginToBackend(credentials);
+    setUser({ username: session.username, isDemo: session.isDemo });
   }, []);
 
   const logout = useCallback(async () => {
-    await AsyncStorage.removeItem(STORAGE_KEY);
+    await logoutFromBackend();
     setUser(null);
   }, []);
 
