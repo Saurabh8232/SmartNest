@@ -10,7 +10,6 @@ import {
   DigitalBoardStatus,
   lockDigitalRelay,
   rebootSystem,
-  requestDigitalBoard,
   subscribeToCommandAck,
   subscribeToConnection,
   subscribeToDigitalBoard,
@@ -49,7 +48,7 @@ export default function DigitalBoardScreen() {
   }, []);
 
   const load = useCallback(() => {
-    requestDigitalBoard();
+    setRefreshing(false);
   }, []);
 
   useEffect(() => {
@@ -222,7 +221,7 @@ export default function DigitalBoardScreen() {
           <Icon name="arrow-left" size={18} color={colors.primary} />
         </TouchableOpacity>
         <View style={styles.flex1}>
-          <Text style={styles.subtitle}>Smart Relay · ACS Monitor</Text>
+          <Text style={styles.subtitle}>Smart Control</Text>
           <Text style={styles.title}>Digital Board</Text>
         </View>
         {offline && (

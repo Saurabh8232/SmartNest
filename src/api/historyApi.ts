@@ -1,11 +1,6 @@
 import { REST_BASE_URL } from '../config/communication';
 import { authFetch } from '../authentication/authService';
-import {
-  AcRecord,
-  EnergyRecord,
-  HistoryData,
-  TimeSeriesPoint,
-} from '../types/communication';
+import { EnergyRecord, HistoryData } from '../types/communication';
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const controller = new AbortController();
@@ -31,77 +26,39 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   }
 }
 
+// Map UI period keys to the values the backend accepts
+type BackendFilter = 'today' | '7d' | '30d' | 'custom';
+
+function toBackendFilter(period: string): BackendFilter {
+  if (period === 'last7days'  || period === '7d')  return '7d';
+  if (period === 'last30days' || period === '30d') return '30d';
+  return 'today';
+}
+
 interface EnergyHistoryResponse {
-  energyRecords?: EnergyRecord[];
-  electricalRecords?: Array<EnergyRecord & Record<string, unknown>>;
-  energyTrend?: TimeSeriesPoint[];
+  success: boolean;
+  filter: string;
+  summary: { totalEnergyKwh: number; recordCount: number; };
+  records: EnergyRecord[];
 }
 
-interface AcActivityHistoryResponse {
-  acRecords?: AcRecord[];
-}
-
-type HistoryPeriod = 'daily' | 'weekly' | 'monthly';
-
-function normalizePeriod(period: string): HistoryPeriod {
-  if (period === 'last7days' || period === 'weekly') return 'weekly';
-  if (period === 'last30days' || period === 'monthly') return 'monthly';
-  return 'daily';
-}
-
-export async function getEnergyHistory(
-  period: string,
-): Promise<Pick<HistoryData, 'energyRecords' | 'energyTrend'>> {
-  const normalizedPeriod = normalizePeriod(period);
-  const history = await request<EnergyHistoryResponse>(
-    `/energyHistory?period=${normalizedPeriod}`,
-  );
-  const sourceRecords = Array.isArray(history.energyRecords)
-    ? history.energyRecords
-    : Array.isArray(history.electricalRecords)
-      ? history.electricalRecords
-      : [];
-  const energyRecords = sourceRecords.map(record => ({
-    id: String(record.id),
-    timestamp: record.timestamp,
-    energy: Number(record.energy) || 0,
-  }));
-
-  return {
-    energyRecords,
-    energyTrend: Array.isArray(history.energyTrend)
-      ? history.energyTrend
-      : energyRecords.map(record => ({
-          timestamp: record.timestamp,
-          value: Number(record.energy) || 0,
-        })),
-  };
-}
-
-export async function getAcActivityHistory(period: string): Promise<AcRecord[]> {
-  const normalizedPeriod = normalizePeriod(period);
-  const history = await request<AcActivityHistoryResponse>(
-    `/acActivityHistory?period=${normalizedPeriod}`,
-  );
-  return Array.isArray(history.acRecords) ? history.acRecords : [];
-}
-
-// The existing History screen consumes one model, composed exclusively from REST.
 export async function getHistory(period: string): Promise<HistoryData> {
-  const [energyHistory, acRecords] = await Promise.all([
-    getEnergyHistory(period),
-    getAcActivityHistory(period),
-  ]);
+  const filter = toBackendFilter(period);
+  const res = await request<EnergyHistoryResponse>(
+    `/api/history/energy?deviceId=${encodeURIComponent(await getDeviceId())}&filter=${filter}`,
+  );
 
   return {
-    ...energyHistory,
-    acRecords,
+    filter: res.filter,
+    summary: res.summary,
+    records: Array.isArray(res.records) ? res.records : [],
   };
 }
 
-export type {
-  AcRecord,
-  EnergyRecord,
-  HistoryData,
-  TimeSeriesPoint,
-} from '../types/communication';
+// Reads DEVICE_ID from config. Imported here to keep historyApi self-contained.
+async function getDeviceId(): Promise<string> {
+  const { DEVICE_ID } = await import('../config/communication');
+  return DEVICE_ID;
+}
+
+export type { EnergyRecord, HistoryData } from '../types/communication';

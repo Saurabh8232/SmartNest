@@ -13,8 +13,6 @@ import {
   DashboardData,
   masterUnlockAll,
   shutdownAll,
-  requestDashboard,
-  requestDashboardAlerts,
   subscribeToConnection,
   subscribeToDashboard,
   subscribeToDashboardAlerts,
@@ -84,9 +82,7 @@ export default function DashboardScreen() {
   }, []);
 
   const load = useCallback(() => {
-    requestDashboard();
-    requestDashboardAlerts();
-    fetchTrends();
+    fetchTrends().finally(() => setRefreshing(false));
   }, [fetchTrends]);
 
   useEffect(() => {

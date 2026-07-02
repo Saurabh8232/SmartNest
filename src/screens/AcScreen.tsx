@@ -7,7 +7,6 @@ import Icon from 'react-native-vector-icons/Feather';
 import Svg, { Path, Circle } from 'react-native-svg';
 import {
   AcStatus,
-  requestAcStatus,
   sendAcCommand,
   subscribeToAc,
   subscribeToConnection,
@@ -110,7 +109,9 @@ export default function AcScreen() {
     });
   }, []);
 
-  const load = useCallback(() => { requestAcStatus(); }, []);
+  const load = useCallback(() => {
+    setRefreshing(false);
+  }, []);
 
   useEffect(() => {
     load();
@@ -173,7 +174,7 @@ export default function AcScreen() {
           <Icon name="arrow-left" size={18} color={colors.primary} />
         </TouchableOpacity>
         <View style={styles.flex1}>
-          <Text style={styles.subtitle}>IR Blaster · Smart Control</Text>
+          <Text style={styles.subtitle}>Smart Control</Text>
           <Text style={styles.title}>AC Controller</Text>
         </View>
         {offline && (

@@ -5,13 +5,13 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
-import { getHistory, HistoryData, EnergyRecord, AcRecord } from '../api/historyApi';
+import { getHistory, HistoryData, EnergyRecord } from '../api/historyApi';
 import MiniChart from '../components/MiniChart';
 import colors from '../constants/colors';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-// Only Energy and AC are active.
-// Power / Current / Voltage / Temp are disabled — not in HistoryData.
+// Only Energy is active in the current API contract.
+// AC tab UI is kept below as commented-out code for later re-enable.
 type Period = 'today' | 'last7days' | 'last30days';
 type Tab = 'energy' | 'ac';
 
@@ -22,7 +22,7 @@ const PERIODS: { key: Period; label: string }[] = [
   { key: 'last30days', label: '30 Days' },
 ];
 
-// Tabs — power / current / voltage / temp commented out 
+// Tabs — power / current / voltage / temp remain commented out.
 const TABS: { key: Tab; label: string; icon: string; color: string }[] = [
   // { key: 'power',   label: 'Power',   icon: 'zap',              color: colors.accent  },
   { key: 'energy',  label: 'Energy',  icon: 'battery-charging', color: colors.success },
@@ -33,13 +33,13 @@ const TABS: { key: Tab; label: string; icon: string; color: string }[] = [
 ];
 
 // HistoryData shape (from historyApi.ts / types/communication.ts):
-//   energyRecords: EnergyRecord[]  — { id, timestamp, energy }
-//   energyTrend:   TimeSeriesPoint[] — { timestamp, value }
-//   acRecords:     AcRecord[]
+//   filter: string
+//   summary: { totalEnergyKwh: number; recordCount: number; }
+//   records: EnergyRecord[]
 const DEFAULT_DATA: HistoryData = {
-  energyRecords: [],
-  energyTrend:   [],
-  acRecords:     [],
+  filter: 'today',
+  summary: { totalEnergyKwh: 0, recordCount: 0 },
+  records: [],
 };
 
 function periodLabel(p: Period) {
@@ -76,13 +76,12 @@ export default function HistoryScreen() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Trend for chart — only energyTrend exists in HistoryData
-  const trend = tab === 'energy' ? (data.energyTrend ?? []) : [];
+  const trend = data.records.map(record => ({
+    timestamp: record.date,
+    value: record.totalEnergyKwh,
+  }));
 
-  // hasData check — uses only real HistoryData fields
-  const hasData =
-    (tab === 'energy' && (trend.length > 1 || (data.energyRecords ?? []).length > 0)) ||
-    (tab === 'ac'     && (data.acRecords ?? []).length > 0);
+  const hasData = trend.length > 0;
 
   return (
     <ScrollView
@@ -131,7 +130,7 @@ export default function HistoryScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* ── Category tabs (Energy & AC only) ── */}
+      {/* ── Category tabs (Energy only; AC tab left commented out) ── */}
       <ScrollView
         ref={tabScrollRef}
         horizontal
@@ -156,6 +155,22 @@ export default function HistoryScreen() {
             </TouchableOpacity>
           );
         })}
+        {/**
+         * AC tab intentionally commented out for now.
+         * {/
+         * <TouchableOpacity
+         *   key="ac"
+         *   onPress={() => setTab('ac')}
+         *   style={[styles.tabBtn, {
+         *     backgroundColor: tab === 'ac' ? '#38bdf8' : colors.card,
+         *     borderColor: tab === 'ac' ? '#38bdf8' : colors.border,
+         *   }]}
+         * >
+         *   <Icon name="wind" size={13} color={tab === 'ac' ? colors.background : '#38bdf8'} />
+         *   <Text style={[styles.tabText, { color: tab === 'ac' ? colors.background : colors.mutedForeground }]}>AC</Text>
+         * </TouchableOpacity>
+         * /}
+        */}
       </ScrollView>
 
       {/* ── Loading / Offline ── */}
@@ -176,10 +191,10 @@ export default function HistoryScreen() {
           <Text style={styles.emptyDesc}>Select a period and category to view data.</Text>
         </View>
 
-      ) : tab === 'energy' ? (
+      ) : (
         /* ── Energy Tab ── */
         <>
-          {/* Energy trend chart — uses energyTrend: TimeSeriesPoint[] */}
+          {/* Energy trend chart — derived from records */}
           {trend.length > 1 && (
             <View style={styles.chartCard}>
               <View style={styles.chartHeader}>
@@ -200,54 +215,25 @@ export default function HistoryScreen() {
             </View>
           )}
 
-          {/* Energy records list — uses energyRecords: EnergyRecord[] { id, timestamp, energy } */}
-          {(data.energyRecords ?? []).length > 0 && (
+          {/* Energy records list — uses records: EnergyRecord[] */}
+          {data.records.length > 0 && (
             <>
               <Text style={styles.sectionLabel}>ENERGY RECORDS</Text>
               <View style={styles.recList}>
-                {(data.energyRecords ?? []).slice(0, 15).map((r: EnergyRecord) => (
-                  <View key={r.id} style={styles.recCard}>
+                {data.records.slice(0, 15).map((r: EnergyRecord) => (
+                  <View key={r.recordId} style={styles.recCard}>
                     <View style={[styles.recDot, { backgroundColor: colors.success }]} />
                     <Text style={styles.recTime}>
-                      {new Date(r.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {new Date(r.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </Text>
                     <Text style={[styles.recVal, { color: colors.success }]}>
-                      {Number(r.energy).toFixed(3)} kWh
+                      {Number(r.totalEnergyKwh).toFixed(3)} kWh
                     </Text>
                   </View>
                 ))}
               </View>
             </>
           )}
-        </>
-
-      ) : (
-        /* ── AC Tab ── uses acRecords: AcRecord[] { id, timestamp, action, oldValue?, newValue? } */
-        <>
-          <Text style={styles.sectionLabel}>AC ACTIVITY</Text>
-          <View style={styles.recList}>
-            {(data.acRecords ?? []).length === 0 ? (
-              <View style={styles.noDataCard}>
-                <Icon name="wind" size={24} color={colors.mutedForeground} />
-                <Text style={styles.noDataText}>No AC activity for this period</Text>
-              </View>
-            ) : (data.acRecords ?? []).map((r: AcRecord) => (
-              <View key={r.id} style={styles.activityCard}>
-                <View style={styles.activityIcon}>
-                  <Icon name="wind" size={13} color="#38bdf8" />
-                </View>
-                <View style={styles.flex1}>
-                  <Text style={styles.recTitle}>{r.action}</Text>
-                  {r.oldValue && r.newValue && (
-                    <Text style={styles.recMeta}>{r.oldValue} → {r.newValue}</Text>
-                  )}
-                </View>
-                <Text style={styles.recMeta}>
-                  {new Date(r.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </Text>
-              </View>
-            ))}
-          </View>
         </>
       )}
     </ScrollView>

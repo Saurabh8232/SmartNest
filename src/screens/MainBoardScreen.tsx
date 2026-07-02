@@ -10,7 +10,6 @@ import {
   lockMainRelay,
   MainBoardStatus,
   rebootSystem,
-  requestMainBoard,
   subscribeToConnection,
   subscribeToMainBoard,
   subscribeToShutdownAll,
@@ -47,7 +46,9 @@ export default function MainBoardScreen() {
     });
   }, []);
 
-  const load = useCallback(() => { requestMainBoard(); }, []);
+  const load = useCallback(() => {
+    setRefreshing(false);
+  }, []);
 
   useEffect(() => {
     const removeBoard = subscribeToMainBoard(status => {
@@ -159,7 +160,7 @@ export default function MainBoardScreen() {
           <Icon name="arrow-left" size={18} color={colors.primary} />
         </TouchableOpacity>
         <View style={styles.flex1}>
-          <Text style={styles.subtitle}>Control Panel</Text>
+          <Text style={styles.subtitle}>Smart Control</Text>
           <Text style={styles.title}>Main Board</Text>
         </View>
         {offline && (
@@ -209,7 +210,7 @@ export default function MainBoardScreen() {
           </View>
           <View style={styles.flex1}>
             <Text style={styles.groupTitle}>Lighting Group</Text>
-            <Text style={styles.groupDesc}>Control relays 1-5 together</Text>
+            <Text style={styles.groupDesc}>Control Light 1-5 together</Text>
           </View>
         </View>
         <View style={styles.groupActions}>

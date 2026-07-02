@@ -6,7 +6,6 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Icon from 'react-native-vector-icons/Feather';
 import {
   IoTDevice,
-  requestDevices,
   subscribeToConnection,
   subscribeToDevices,
 } from '../socket/liveCommunication';
@@ -25,7 +24,7 @@ const DEVICE_CONFIG = [
     type: 'main-board' as const,
     label: 'Main Board',
     subtitle: 'SmartNest Controller',
-    detail: '6 relays · UART · MQTT',
+    detail: '6 relays',
     icon: 'cpu',
     color: colors.primary,
     screen: 'MainBoard' as const,
@@ -34,7 +33,7 @@ const DEVICE_CONFIG = [
     type: 'ac-controller' as const,
     label: 'AC Controller',
     subtitle: 'Air Conditioner',
-    detail: 'IR Blaster · Smart Remote',
+    detail: 'Smart Remote',
     icon: 'wind',
     color: colors.accent,
     screen: 'AC' as const,
@@ -43,7 +42,7 @@ const DEVICE_CONFIG = [
     type: 'digital-board' as const,
     label: 'Digital Board',
     subtitle: 'Digital I/O Controller',
-    detail: '1 relay · ACS sensor · ESP-NOW',
+    detail: '1 relay',
     icon: 'grid',
     color: colors.success,
     screen: 'DigitalBoard' as const,
@@ -68,7 +67,7 @@ export default function DevicesScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(() => {
-    requestDevices();
+    setRefreshing(false);
   }, []);
 
   useEffect(() => {
@@ -106,7 +105,7 @@ export default function DevicesScreen() {
       <View style={styles.header}>
         <View>
           <Text style={styles.title}>Devices</Text>
-          <Text style={styles.subtitle}>Tap any card to open control screen</Text>
+          <Text style={styles.subtitle}> </Text>
         </View>
         {offline && (
           <View style={styles.offlinePill}>

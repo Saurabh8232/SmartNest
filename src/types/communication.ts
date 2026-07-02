@@ -31,10 +31,14 @@ export interface StatusPayload {
   wifi: { ssid: string; rssi: number; };
   mqttStatus: number;
   sd: { ok: boolean; total: number; used: number; };
-  digitalOnline: boolean;
-  pzemOnline: boolean;
   pzemHealth: boolean;
   dhtOk: boolean;
+  lastUpdated: string;
+}
+
+export interface SlavesPayload {
+  digitalBoard: { online: boolean; rssi: number; lastSeenSecAgo: number; };
+  pzem:         { online: boolean; rssi: number; lastSeenSecAgo: number; };
   lastUpdated: string;
 }
 
@@ -139,22 +143,24 @@ export interface IoTDevice {
   type: 'main-board' | 'ac-controller' | 'digital-board';
 }
 
-export interface HistoryData {
-  energyRecords: EnergyRecord[];
-  acRecords: AcRecord[];
-  energyTrend: TimeSeriesPoint[];
-}
-
+// ── History ──────────────────────────────────────────────────────
 export interface EnergyRecord {
-  id: string;
-  timestamp: string;
-  energy: number;
+  recordId: number;
+  epoch: number;
+  date: string;
+  mainEnergyKwh: number;
+  digitalEnergyKwh: number;
+  acEnergyKwh: number;
+  totalEnergyKwh: number;
 }
 
-export interface AcRecord {
-  id: string;
-  action: string;
-  oldValue?: string;
-  newValue?: string;
-  timestamp: string;
+export interface EnergySummary {
+  totalEnergyKwh: number;
+  recordCount: number;
+}
+
+export interface HistoryData {
+  filter: string;
+  summary: EnergySummary;
+  records: EnergyRecord[];
 }

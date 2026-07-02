@@ -1,6 +1,14 @@
 {
+  "auth": {
+    "users": [
+      {
+        "username": "admin",
+        "password": "password123",
+        "name": "Admin"
+      }
+    ]
+  },
   "dashboard": {
-    "id": 1,
     "voltage": 230.4,
     "current": 5.18,
     "power": 1192,
@@ -39,301 +47,111 @@
     "systemOnline": true,
     "lastUpdated": "2026-06-12T14:30:00Z"
   },
-
-  "mainBoard": {
-    "masterLockEnabled": false,
-    "shutdownEnabled": false,
-    "totalCurrent": 2.4,
-    "relays": [
-      {
-        "id": "1",
-        "name": "Light",
-        "number": 1,
-        "isOn": true,
-        "current": 0.5,
-        "status": "normal"
-      },
-      {
-        "id": "2",
-        "name": "Fan",
-        "number": 2,
-        "isOn": true,
-        "current": 0.8,
-        "status": "normal"
-      },
-      {
-        "id": "3",
-        "name": "Pump",
-        "number": 3,
-        "isOn": false,
-        "current": 0,
-        "status": "normal"
-      },
-      {
-        "id": "4",
-        "name": "Socket",
-        "number": 4,
-        "isOn": true,
-        "current": 1.1,
-        "status": "normal"
-      }
-    ]
-  },
-
-  "main-board": {
-    "masterLockEnabled": false,
-    "shutdownEnabled": false,
-    "totalCurrent": 2.4,
-    "relays": [
-      { "id": "1", "name": "Relay 1", "number": 1, "isOn": true, "current": 0.5, "status": "normal" },
-      { "id": "2", "name": "Relay 2", "number": 2, "isOn": true, "current": 0.8, "status": "normal" },
-      { "id": "3", "name": "Relay 3", "number": 3, "isOn": false, "current": 0, "status": "normal" },
-      { "id": "4", "name": "Relay 4", "number": 4, "isOn": true, "current": 1.1, "status": "normal" },
-      { "id": "5", "name": "Relay 5", "number": 5, "isOn": false, "current": 0, "status": "normal" }
-      
-    ]
-  },
-
-  "digitalBoard": {
-    "relays": [
-      {
-        "id": "1",
-        "name": "Room Light",
-        "isOn": true,
-        "current": 0.4,
-        "power": 92,
-        "status": "normal"
-      }
-    ]
-  },
-
-  "digital-board": {
-    "relays": [
-      { "id": "1", "name": "Room Light", "isOn": true, "current": 0.4, "power": 92, "status": "normal" }
-    ]
-  },
-
-  "ac": {
-    "id": 1,
-    "isOn": true,
-    "temperature": 24,
-    "mode": "cool",
-    "fanSpeed": "medium",
-    "swingOn": true,
-    "irBlasterAvailable": true
-  },
-
-  "mqtt": {
-    "settings": {
-      "enabled": true,
-      "broker": "broker.hivemq.com",
-      "port": 1883,
-      "clientId": "SmartNest_001",
-      "username": "",
-      "password": "",
-      "baseTopic": "smartnest",
-      "keepalive": 60
-    }
-  },
-
   "devices": [
     {
-      "id": "1",
-      "name": "ESP32 Main Board",
-      "deviceId": "MB001",
+      "id": "dev1",
+      "name": "Main Board",
+      "deviceId": "SmartNest_001",
       "type": "main-board",
       "ipAddress": "192.168.1.101",
-      "macAddress": "AA:BB:CC:11:22:33",
+      "macAddress": "AA:BB:CC:DD:EE:01",
       "isOnline": true,
-      "rssi": -45,
+      "rssi": -55,
       "lastConnected": "2026-06-12T14:25:00Z"
     },
     {
-      "id": "2",
-      "name": "Digital Board",
-      "deviceId": "DB001",
-      "type": "digital-board",
+      "id": "dev2",
+      "name": "AC Controller",
+      "deviceId": "SmartNest_001",
+      "type": "ac-controller",
       "ipAddress": "192.168.1.102",
-      "macAddress": "AA:BB:CC:44:55:66",
+      "macAddress": "AA:BB:CC:DD:EE:02",
       "isOnline": true,
-      "rssi": -58,
+      "rssi": -62,
       "lastConnected": "2026-06-12T14:20:00Z"
     },
     {
-      "id": "3",
-      "name": "AC Controller",
-      "deviceId": "AC001",
-      "type": "ac-controller",
+      "id": "dev3",
+      "name": "Digital Board",
+      "deviceId": "SmartNest_001",
+      "type": "digital-board",
       "ipAddress": "192.168.1.103",
-      "macAddress": "AA:BB:CC:77:88:99",
+      "macAddress": "AA:BB:CC:DD:EE:03",
       "isOnline": true,
-      "rssi": -62,
+      "rssi": -72,
       "lastConnected": "2026-06-12T14:15:00Z"
     }
   ],
-
-  "history": {
-    "electricalRecords": [
-      {
-        "id": "1",
-        "timestamp": "2026-06-12T09:00:00Z",
-        "voltage": 229.1,
-        "current": 4.8,
-        "power": 1100,
-        "energy": 13.95,
-        "frequency": 50,
-        "powerFactor": 0.97
-      },
-      {
-        "id": "2",
-        "timestamp": "2026-06-12T10:00:00Z",
-        "voltage": 228.4,
-        "current": 4.9,
-        "power": 1117,
-        "energy": 14.5,
-        "frequency": 50,
-        "powerFactor": 0.97
-      },
-      {
-        "id": "3",
-        "timestamp": "2026-06-12T11:00:00Z",
-        "voltage": 230.0,
-        "current": 5.2,
-        "power": 1196,
-        "energy": 15.2,
-        "frequency": 50,
-        "powerFactor": 0.98
-      },
-      {
-        "id": "4",
-        "timestamp": "2026-06-12T12:00:00Z",
-        "voltage": 230.8,
-        "current": 5.3,
-        "power": 1210,
-        "energy": 15.84,
-        "frequency": 50,
-        "powerFactor": 0.98
-      }
-    ],
-
-    "relayRecords": [
-      {
-        "id": "1",
-        "relayName": "Fan",
-        "action": "on",
-        "userAction": "app",
-        "timestamp": "2026-06-12T09:15:00Z"
-      },
-      {
-        "id": "2",
-        "relayName": "Light",
-        "action": "off",
-        "userAction": "automation",
-        "timestamp": "2026-06-12T10:10:00Z"
-      }
-    ],
-
-    "acRecords": [
-      {
-        "id": "1",
-        "action": "temperature_change",
-        "oldValue": "26",
-        "newValue": "24",
-        "timestamp": "2026-06-12T11:00:00Z"
-      },
-      {
-        "id": "2",
-        "action": "power_toggle",
-        "oldValue": "off",
-        "newValue": "on",
-        "timestamp": "2026-06-12T11:15:00Z"
-      }
-    ],
-
-    "powerTrend": [
-      { "timestamp": "2026-06-12T09:00:00Z", "value": 1100 },
-      { "timestamp": "2026-06-12T10:00:00Z", "value": 1117 },
-      { "timestamp": "2026-06-12T11:00:00Z", "value": 1196 },
-      { "timestamp": "2026-06-12T12:00:00Z", "value": 1210 }
-    ],
-
-    "energyTrend": [
-      { "timestamp": "2026-06-12T09:00:00Z", "value": 13.95 },
-      { "timestamp": "2026-06-12T10:00:00Z", "value": 14.5 },
-      { "timestamp": "2026-06-12T11:00:00Z", "value": 15.2 },
-      { "timestamp": "2026-06-12T12:00:00Z", "value": 15.84 }
+  "mainBoard": {
+    "masterLockEnabled": false,
+    "shutdownEnabled": false,
+    "mainCurrent": 4.2,
+    "mainEnergyKwh": 2.345,
+    "relays": [
+      { "id": "r1", "name": "Living Room Fan", "number": 1, "isOn": true, "current": 1.2, "status": "normal", "locked": false, "runtimeSec": 4200 },
+      { "id": "r2", "name": "Bedroom Light", "number": 2, "isOn": false, "current": 0, "status": "normal", "locked": false, "runtimeSec": 1800 },
+      { "id": "r3", "name": "Kitchen Exhaust", "number": 3, "isOn": true, "current": 0.8, "status": "normal", "locked": false, "runtimeSec": 2600 },
+      { "id": "r4", "name": "Outdoor Lights", "number": 4, "isOn": false, "current": 0, "status": "normal", "locked": false, "runtimeSec": 900 },
+      { "id": "r5", "name": "Water Pump", "number": 5, "isOn": true, "current": 2.2, "status": "normal", "locked": false, "runtimeSec": 6200 },
+      { "id": "r6", "name": "Garden Lights", "number": 6, "isOn": false, "current": 0, "status": "normal", "locked": false, "runtimeSec": 1200 }
     ]
   },
-
-  "energyHistory": {
-    "electricalRecords": [
-      { "id": "1", "timestamp": "2026-06-12T09:00:00Z", "voltage": 229.1, "current": 4.8, "power": 1100, "energy": 13.95, "frequency": 50, "powerFactor": 0.97 },
-      { "id": "2", "timestamp": "2026-06-12T10:00:00Z", "voltage": 228.4, "current": 4.9, "power": 1117, "energy": 14.5, "frequency": 50, "powerFactor": 0.97 },
-      { "id": "3", "timestamp": "2026-06-12T11:00:00Z", "voltage": 230.0, "current": 5.2, "power": 1196, "energy": 15.2, "frequency": 50, "powerFactor": 0.98 },
-      { "id": "4", "timestamp": "2026-06-12T12:00:00Z", "voltage": 230.8, "current": 5.3, "power": 1210, "energy": 15.84, "frequency": 50, "powerFactor": 0.98 }
-    ],
-    "powerTrend": [
-      { "timestamp": "2026-06-12T09:00:00Z", "value": 1100 },
-      { "timestamp": "2026-06-12T10:00:00Z", "value": 1117 },
-      { "timestamp": "2026-06-12T11:00:00Z", "value": 1196 },
-      { "timestamp": "2026-06-12T12:00:00Z", "value": 1210 }
-    ],
-    "energyTrend": [
-      { "timestamp": "2026-06-12T09:00:00Z", "value": 13.95 },
-      { "timestamp": "2026-06-12T10:00:00Z", "value": 14.5 },
-      { "timestamp": "2026-06-12T11:00:00Z", "value": 15.2 },
-      { "timestamp": "2026-06-12T12:00:00Z", "value": 15.84 }
+  "digitalBoard": {
+    "masterLockEnabled": false,
+    "digitalCurrent": 0.6,
+    "digitalEnergyKwh": 0.567,
+    "relays": [
+      { "id": "d7", "name": "Smart Plug 1", "isOn": true, "current": 0.6, "power": 132, "status": "normal", "switchState": "released", "locked": false, "runtimeSec": 1300 }
     ]
   },
-
-  "acActivityHistory": {
-    "acRecords": [
-      { "id": "1", "action": "temperature_change", "oldValue": "26", "newValue": "24", "timestamp": "2026-06-12T11:00:00Z" },
-      { "id": "2", "action": "power_toggle", "oldValue": "off", "newValue": "on", "timestamp": "2026-06-12T11:15:00Z" },
-      { "id": "3", "action": "fan_speed_change", "oldValue": "low", "newValue": "medium", "timestamp": "2026-06-12T11:20:00Z" },
-      { "id": "4", "action": "mode_change", "oldValue": "fan", "newValue": "cool", "timestamp": "2026-06-12T11:25:00Z" },
-      { "id": "5", "action": "swing_toggle", "oldValue": "off", "newValue": "on", "timestamp": "2026-06-12T11:30:00Z" }
-    ]
+  "ac": {
+    "isOn": false,
+    "temperature": 24,
+    "fanSpeed": "auto",
+    "swingOn": false,
+    "irBlasterAvailable": true,
+    "acCurrent": 0,
+    "acPower": 0,
+    "acEnergyKwh": 0.235,
+    "pzemCumulativeEnergyKwh": 10.5
   },
-
   "alerts": [
     {
-      "id": "1",
+      "id": "a1",
       "type": "electrical",
-      "code": "OVERCURRENT",
-      "title": "High Current Warning",
-      "description": "Current exceeded safe limit on the main board.",
+      "code": "OV01",
+      "title": "High Voltage Detected",
+      "description": "Voltage exceeded 240V threshold.",
       "severity": "warning",
-      "suggestedSolution": "Check connected appliances and reduce active load.",
-      "deviceName": "ESP32 Main Board",
-      "timestamp": "2026-06-12T13:00:00Z",
-      "isResolved": false
+      "suggestedSolution": "Check main supply.",
+      "timestamp": "2026-06-12T14:25:00Z",
+      "isResolved": false,
+      "deviceName": "Main Board"
     },
-
     {
-      "id": "2",
+      "id": "a2",
       "type": "communication",
-      "code": "DEVICE_OFFLINE",
-      "title": "Device Offline",
-      "description": "Digital Board disconnected from the network.",
-      "severity": "critical",
-      "suggestedSolution": "Check WiFi connection and reboot the board if needed.",
-      "deviceName": "Digital Board",
-      "timestamp": "2026-06-12T12:00:00Z",
-      "isResolved": true
-    },
-
-    {
-      "id": "3",
-      "type": "relay",
-      "code": "RELAY_STUCK",
-      "title": "Relay Response Delay",
-      "description": "Relay 4 responded slower than expected.",
+      "code": "CM01",
+      "title": "Digital Board Reconnected",
+      "description": "Lost connection for 30s.",
       "severity": "info",
-      "suggestedSolution": "Monitor the relay state and inspect the wiring if it repeats.",
-      "deviceName": "Main Board Relay 4",
-      "timestamp": "2026-06-12T14:05:00Z",
-      "isResolved": false
+      "suggestedSolution": "Monitor for recurring disconnections.",
+      "timestamp": "2026-06-12T14:15:00Z",
+      "isResolved": false,
+      "deviceName": "Digital Board"
     }
-  ]
+  ],
+  "history": {
+    "filter": "today",
+    "summary": {
+      "totalEnergyKwh": 15.84,
+      "recordCount": 4
+    },
+    "records": [
+      { "recordId": 1, "epoch": 1750093200, "date": "2026-06-12T09:00:00Z", "mainEnergyKwh": 10.35, "digitalEnergyKwh": 1.4, "acEnergyKwh": 2.2, "totalEnergyKwh": 13.95 },
+      { "recordId": 2, "epoch": 1750096800, "date": "2026-06-12T10:00:00Z", "mainEnergyKwh": 10.75, "digitalEnergyKwh": 1.5, "acEnergyKwh": 2.25, "totalEnergyKwh": 14.5 },
+      { "recordId": 3, "epoch": 1750100400, "date": "2026-06-12T11:00:00Z", "mainEnergyKwh": 11.1, "digitalEnergyKwh": 1.55, "acEnergyKwh": 2.55, "totalEnergyKwh": 15.2 },
+      { "recordId": 4, "epoch": 1750104000, "date": "2026-06-12T12:00:00Z", "mainEnergyKwh": 11.45, "digitalEnergyKwh": 1.6, "acEnergyKwh": 2.79, "totalEnergyKwh": 15.84 }
+    ]
+  }
 }

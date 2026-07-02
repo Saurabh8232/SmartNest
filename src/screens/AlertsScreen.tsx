@@ -5,7 +5,6 @@ import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Feather';
 import {
   Alert as AlertType,
-  requestAlerts,
   resolveAlert,
   subscribeToAlerts,
   subscribeToConnection,
@@ -40,7 +39,7 @@ export default function AlertsScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(() => {
-    requestAlerts();
+    setRefreshing(false);
   }, []);
 
   useEffect(() => {

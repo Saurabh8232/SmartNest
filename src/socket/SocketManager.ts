@@ -27,11 +27,9 @@ class SocketManager {
         timeout: 10000,
       });
 
+      // 'connect' fires on both first connect and every reconnect in Socket.IO v4.
+      // Re-subscribing here is sufficient — no separate 'reconnect' listener needed.
       this.socket.on('connect', () => {
-        this.socket?.emit('subscribe', DEVICE_ID);
-      });
-
-      this.socket.on('reconnect', () => {
         this.socket?.emit('subscribe', DEVICE_ID);
       });
     }

@@ -1,6 +1,6 @@
 # SmartNest
 
-SmartNest is a React Native control app for a hybrid IoT backend that serves REST commands and Socket.IO telemetry for the main board, digital board, AC controller, alerts, and dashboard views.
+SmartNest is a React Native control app for a hybrid IoT backend that serves REST commands and Socket.IO telemetry for the main board, digital board, AC controller, alerts, dashboard, devices, and history views.
 
 ## Stack
 
@@ -8,10 +8,13 @@ SmartNest is a React Native control app for a hybrid IoT backend that serves RES
 - TypeScript
 - Socket.IO client
 - AsyncStorage for local session and screen cache
+- Express mock server for local testing
 
 ## Setup
 
 Update the backend host in [src/config/communication.ts](src/config/communication.ts) before running the app.
+
+For local development you can point the app at the mock server in [mock-server/server.js](mock-server/server.js) and seed data in [db.json](db.json).
 
 ### Start the app
 
@@ -19,6 +22,28 @@ Update the backend host in [src/config/communication.ts](src/config/communicatio
 npm install
 npm start
 ```
+
+## Local Mock Backend
+
+The mock backend is useful when the device firmware or real API is unavailable.
+
+Start the mock data API and socket server from the project root:
+
+```sh
+npm install
+npm run serve:db
+npm run serve:socket
+```
+
+If you want to run only the socket mock on its own, you can also use the `mock-server/` package directly:
+
+```sh
+cd mock-server
+npm install
+npm start
+```
+
+The mock server reads [db.json](db.json) as its seed data and emits live updates for the dashboard, relays, AC status, alerts, devices, and command acknowledgements.
 
 ### Android
 
@@ -42,7 +67,8 @@ The app expects a backend that exposes:
 - `POST /api/auth/refresh`
 - `POST /api/auth/logout`
 - Device REST endpoints under `/api/device/:deviceId/...`
-- Socket.IO events such as `subscribe`, `device:sensors`, `device:relays`, `device:status`, `command:ack`, and the dashboard/device update events used by the screens
+- History REST endpoint `GET /api/history/energy?deviceId=...&filter=today|7d|30d`
+- Socket.IO events such as `subscribe`, `device:sensors`, `device:relays`, `device:status`, `device:slaves`, `command:ack`, `dashboard:update`, `dashboard-alerts:update`, `devices:update`, `alerts:update`, `main-board:update`, `digital-board:update`, and `ac:update`
 
 ### Authentication
 
@@ -57,6 +83,18 @@ The auth layer stores the current session locally and keeps the Socket.IO token 
 - The socket manager reconnects automatically.
 - The app re-subscribes after reconnect.
 - Commands that return `cmd_id` should be tracked until `command:ack` arrives.
+- The mock socket server emits the current device snapshot immediately after a client subscribes.
+- Dashboard trend data is composed from the latest live history and sensor snapshots.
+
+## Mock Data Contract
+
+The current mock history contract is:
+
+- `filter`: the active period key returned by the API
+- `summary`: `{ totalEnergyKwh, recordCount }`
+- `records`: an array of energy rows with `recordId`, `epoch`, `date`, `mainEnergyKwh`, `digitalEnergyKwh`, `acEnergyKwh`, and `totalEnergyKwh`
+
+The AC activity history shape from the older UI is no longer used by the current history screen.
 
 ## Project Structure
 
@@ -129,14 +167,14 @@ SmartNest/
 - `AccountScreen` shows the current session and sign-out controls.
 - `HistoryScreen` is the analytics/history view and is handled separately because its backend area is still being developed.
 
-## History Page Status
+## History Page
 
-The history page is currently under processing on the backend side.
+The history page is implemented in [src/screens/HistoryScreen.tsx](src/screens/HistoryScreen.tsx) and loads data through [src/api/historyApi.ts](src/api/historyApi.ts).
 
-- The UI is present in [src/screens/HistoryScreen.tsx](src/screens/HistoryScreen.tsx).
-- The REST loader lives in [src/api/historyApi.ts](src/api/historyApi.ts).
-- The screen currently supports Energy and AC tabs, with Today, 7 Days, 30 Days, and a custom-range placeholder.
-- Do not change the history backend contract without permission while processing is still in progress.
+- The current UI shows the Energy tab and keeps the AC tab code commented out for future use.
+- Supported periods are Today, 7 Days, 30 Days, plus a custom-range placeholder.
+- The current backend response shape is `filter`, `summary`, and `records`.
+- If you change the mock history shape, update [src/api/historyApi.ts](src/api/historyApi.ts), [mock-server/server.js](mock-server/server.js), and [db.json](db.json) together.
 
 ## Scripts
 
@@ -148,7 +186,15 @@ The history page is currently under processing on the backend side.
 - `npm test` - run Jest
 - `npx tsc --noEmit` - typecheck
 
+## Useful Files
+
+- [src/config/communication.ts](src/config/communication.ts) controls the backend URL and device ID.
+- [src/socket/liveCommunication.ts](src/socket/liveCommunication.ts) owns subscriptions, command helpers, and composed dashboard state.
+- [mock-server/server.js](mock-server/server.js) serves the local REST and Socket.IO mock backend.
+- [db.json](db.json) provides the seed data used by the mock server.
+
 ## Notes
 
 - If you change the backend host or port, update `REST_BASE_URL` and `SOCKET_URL` together.
 - The app can fall back to a demo session when the auth backend is unavailable, which is useful for local UI testing.
+- The history backend is intentionally kept simple in the mock data so the screens stay aligned with the current app contract.
