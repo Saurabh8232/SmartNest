@@ -17,6 +17,7 @@ import socketManager from './SocketManager';
 import { authFetch, getAccessToken, subscribeToSession } from '../authentication/authService';
 
 type Unsubscribe = () => void;
+const DEVICE_API_PATH = `/api/device/${DEVICE_ID}`;
 
 // ── Relay name maps (backend sends numbers only, names are local) ─
 const MAIN_RELAY_NAMES: Record<number, string> = {
@@ -53,7 +54,7 @@ async function apiPost(path: string, body?: object): Promise<{ cmd_id?: string }
 // The backend only pushes device:relays / device:sensors over the socket when
 // real MQTT data changes — it does NOT send a snapshot on `subscribe`. Without
 // this, screens stay blank until the hardware happens to report an update.
-// Note: GET /api/devices/:id/relays returns a DIFFERENT shape than the socket
+// Note: GET /api/device/:id/relays returns a DIFFERENT shape than the socket
 // event (arrays, not `items`), so we normalize it here.
 interface RestRelaysResponse {
   success: boolean;
@@ -82,7 +83,7 @@ function normalizeRestRelays(data: RestRelaysResponse['data']): RelaysPayload {
 
 async function fetchInitialRelays(): Promise<RelaysPayload | null> {
   try {
-    const res = await authFetch(`${REST_BASE_URL}/api/devices/${DEVICE_ID}/relays`);
+    const res = await authFetch(`${REST_BASE_URL}${DEVICE_API_PATH}/relays`);
     if (!res.ok) return null;
     const json: RestRelaysResponse = await res.json();
     if (!json?.data) return null;
@@ -99,6 +100,7 @@ let latestRelays: RelaysPayload | null = null;
 let latestStatus: StatusPayload | null = null;
 let latestSlaves: SlavesPayload | null = null;
 const shutdownAllListeners = new Set<() => void>();
+const unlockAllListeners = new Set<() => void>();
 
 const dashboardListeners = new Set<(d: DashboardData) => void>();
 
@@ -276,6 +278,11 @@ export function subscribeToShutdownAll(listener: () => void): Unsubscribe {
   return () => { shutdownAllListeners.delete(listener); };
 }
 
+export function subscribeToUnlockAll(listener: () => void): Unsubscribe {
+  unlockAllListeners.add(listener);
+  return () => { unlockAllListeners.delete(listener); };
+}
+
 // ── Digital Board ────────────────────────────────────────────────
 export function subscribeToDigitalBoard(listener: (status: DigitalBoardStatus) => void): Unsubscribe {
   let latestRelaysLocal: RelaysPayload | null = latestRelays;
@@ -359,71 +366,75 @@ export function subscribeToConnection(
 // ── REST Commands — Main Board ───────────────────────────────────
 export async function controlMainRelay(relayId: string, action: 'on' | 'off'): Promise<{ cmd_id?: string }> {
   const relayNo = parseInt(relayId.replace('r', ''), 10);
-  return apiPost(`/api/devices/${DEVICE_ID}/relays/${relayNo}`, { state: action === 'on' });
+  return apiPost(`${DEVICE_API_PATH}/relays/${relayNo}`, { state: action === 'on' });
 }
 
 export async function controlMainLightingGroup(action: 'on' | 'off'): Promise<{ cmd_id?: string }> {
-  return apiPost(`/api/devices/${DEVICE_ID}/lights`, { state: action === 'on' });
+  return apiPost(`${DEVICE_API_PATH}/lights`, { state: action === 'on' });
 }
 
 export async function lockMainRelay(relayId: string, locked: boolean): Promise<{ cmd_id?: string }> {
   const relayNo = parseInt(relayId.replace('r', ''), 10);
-  return apiPost(`/api/devices/${DEVICE_ID}/relays/${relayNo}/lock`, { locked });
+  return apiPost(`${DEVICE_API_PATH}/relays/${relayNo}/lock`, { locked });
 }
 
 export async function setMasterShutdown(_enabled: boolean): Promise<{ cmd_id?: string }> {
-  return apiPost(`/api/devices/${DEVICE_ID}/relays/off`);
+  return apiPost(`${DEVICE_API_PATH}/relays/off`);
 }
 
 export async function rebootMainBoard(): Promise<{ cmd_id?: string }> {
-  return apiPost(`/api/devices/${DEVICE_ID}/system/reboot`);
+  return apiPost(`${DEVICE_API_PATH}/system/reboot`);
 }
 
 // ── REST Commands — Digital Board ────────────────────────────────
 export async function controlDigitalRelay(_relayId: string, action: 'on' | 'off'): Promise<{ cmd_id?: string }> {
-  return apiPost(`/api/devices/${DEVICE_ID}/relays/7`, { state: action === 'on' });
+  return apiPost(`${DEVICE_API_PATH}/relays/7`, { state: action === 'on' });
 }
 
 export async function lockDigitalRelay(_relayId: string, locked: boolean): Promise<{ cmd_id?: string }> {
-  return apiPost(`/api/devices/${DEVICE_ID}/relays/7/lock`, { locked });
+  return apiPost(`${DEVICE_API_PATH}/relays/7/lock`, { locked });
 }
 
 // ── REST Commands — Global ────────────────────────────────────────
 export async function masterUnlockAll(): Promise<{ cmd_id?: string }> {
-  return apiPost(`/api/devices/${DEVICE_ID}/relays/unlock`);
+  const result = await apiPost(`${DEVICE_API_PATH}/relays/unlock`);
+  unlockAllListeners.forEach(listener => listener());
+  return result;
 }
 
 export async function masterShutdownAll(_enabled: boolean): Promise<{ cmd_id?: string }> {
-  return apiPost(`/api/devices/${DEVICE_ID}/relays/off`);
+  const result = await apiPost(`${DEVICE_API_PATH}/relays/off`);
+  shutdownAllListeners.forEach(listener => listener());
+  return result;
 }
 
 export async function shutdownAll(): Promise<void> {
-  await apiPost(`/api/devices/${DEVICE_ID}/relays/off`);
+  await apiPost(`${DEVICE_API_PATH}/relays/off`);
   shutdownAllListeners.forEach(listener => listener());
 }
 
 export async function rebootSystem(): Promise<{ cmd_id?: string }> {
-  return apiPost(`/api/devices/${DEVICE_ID}/system/reboot`);
+  return apiPost(`${DEVICE_API_PATH}/system/reboot`);
 }
 
 // ── REST Commands — AC ────────────────────────────────────────────
 export async function sendAcCommand(action: string, value?: unknown): Promise<void> {
   if (action === 'power_on') {
-    await apiPost(`/api/devices/${DEVICE_ID}/ac`, { power: true });
+    await apiPost(`${DEVICE_API_PATH}/ac`, { power: true });
   } else if (action === 'power_off') {
-    await apiPost(`/api/devices/${DEVICE_ID}/ac`, { power: false });
+    await apiPost(`${DEVICE_API_PATH}/ac`, { power: false });
   } else if (action === 'set_temperature') {
     _acTemp = value as number;
-    await apiPost(`/api/devices/${DEVICE_ID}/ac`, { temp: value });
+    await apiPost(`${DEVICE_API_PATH}/ac`, { temp: value });
   } else if (action === 'temperature_up') {
     _acTemp = Math.min(_acTemp + 1, 30);
-    await apiPost(`/api/devices/${DEVICE_ID}/ac`, { tempStep: 'up' });
+    await apiPost(`${DEVICE_API_PATH}/ac`, { tempStep: 'up' });
   } else if (action === 'temperature_down') {
     _acTemp = Math.max(_acTemp - 1, 16);
-    await apiPost(`/api/devices/${DEVICE_ID}/ac`, { tempStep: 'down' });
+    await apiPost(`${DEVICE_API_PATH}/ac`, { tempStep: 'down' });
   } else if (action === 'set_fan_speed') {
     _acFan = value as AcStatus['fanSpeed'];
-    await apiPost(`/api/devices/${DEVICE_ID}/ac`, { fan: value });
+    await apiPost(`${DEVICE_API_PATH}/ac`, { fan: value });
   }
 }
 

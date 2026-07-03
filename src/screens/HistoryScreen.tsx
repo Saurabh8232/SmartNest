@@ -29,7 +29,7 @@ const TABS: { key: Tab; label: string; icon: string; color: string }[] = [
   // { key: 'current', label: 'Current', icon: 'activity',          color: colors.primary },
   // { key: 'voltage', label: 'Voltage', icon: 'zap-off',           color: colors.warning },
   // { key: 'temp',    label: 'Temp',    icon: 'thermometer',       color: '#f59e0b'      },
-  { key: 'ac',      label: 'AC',      icon: 'wind',             color: '#38bdf8'      },
+  // { key: 'ac',      label: 'AC',      icon: 'wind',             color: '#38bdf8'      },
 ];
 
 // HistoryData shape (from historyApi.ts / types/communication.ts):

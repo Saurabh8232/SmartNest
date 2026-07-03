@@ -13,6 +13,8 @@ import {
   subscribeToCommandAck,
   subscribeToConnection,
   subscribeToDigitalBoard,
+  subscribeToShutdownAll,
+  subscribeToUnlockAll,
 } from '../socket/liveCommunication';
 import colors from '../constants/colors';
 
@@ -76,10 +78,49 @@ export default function DigitalBoardScreen() {
       }
     });
 
+    const removeShutdownAll = subscribeToShutdownAll(() => {
+      setBoard(prev => {
+        const next = {
+          ...prev,
+          digitalCurrent: 0,
+          digitalEnergyKwh: prev.digitalEnergyKwh,
+          relays: prev.relays.map(relay => ({
+            ...relay,
+            isOn: false,
+            current: 0,
+            power: 0,
+          })),
+        };
+        AsyncStorage.setItem(CACHE_KEY, JSON.stringify(next)).catch(() => {});
+        return next;
+      });
+      setRefreshing(false);
+      setCommandPending(false);
+    });
+
+    const removeUnlockAll = subscribeToUnlockAll(() => {
+      setBoard(prev => {
+        const next = {
+          ...prev,
+          masterLockEnabled: false,
+          relays: prev.relays.map(relay => ({
+            ...relay,
+            locked: false,
+          })),
+        };
+        AsyncStorage.setItem(CACHE_KEY, JSON.stringify(next)).catch(() => {});
+        return next;
+      });
+      setRefreshing(false);
+      setCommandPending(false);
+    });
+
     return () => {
       removeBoard();
       removeConnection();
       removeAck();
+      removeShutdownAll();
+      removeUnlockAll();
     };
   }, [load]);
 

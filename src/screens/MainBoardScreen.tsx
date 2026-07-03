@@ -15,6 +15,7 @@ import {
   subscribeToCommandAck,
   subscribeToMainBoard,
   subscribeToShutdownAll,
+  subscribeToUnlockAll,
 } from '../socket/liveCommunication';
 import colors from '../constants/colors';
 
@@ -93,7 +94,22 @@ export default function MainBoardScreen() {
       });
       setRefreshing(false);
     });
-    return () => { removeBoard(); removeConnection(); removeAck(); removeShutdownAll(); };
+    const removeUnlockAll = subscribeToUnlockAll(() => {
+      setData(prev => {
+        const next = {
+          ...prev,
+          masterLockEnabled: false,
+          relays: prev.relays.map(relay => ({
+            ...relay,
+            locked: false,
+          })),
+        };
+        AsyncStorage.setItem(CACHE_KEY, JSON.stringify(next)).catch(() => {});
+        return next;
+      });
+      setRefreshing(false);
+    });
+    return () => { removeBoard(); removeConnection(); removeAck(); removeShutdownAll(); removeUnlockAll(); };
   }, [load]);
 
   const handleToggle = useCallback((id: string, action: 'on' | 'off') => {

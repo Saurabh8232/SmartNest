@@ -17,7 +17,9 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     });
 
     if (!response.ok) {
-      throw new Error(`REST request failed with status ${response.status}`);
+      const error = new Error(`REST request failed with status ${response.status}`);
+      (error as Error & { status?: number }).status = response.status;
+      throw error;
     }
 
     return response.json();
@@ -40,23 +42,42 @@ interface EnergyHistoryResponse {
   filter: string;
   summary: { totalEnergyKwh: number; recordCount: number; };
   records: EnergyRecord[];
+  data?: {
+    filter?: string;
+    summary?: { totalEnergyKwh: number; recordCount: number; };
+    records?: EnergyRecord[];
+  };
+}
+
+function normalizeHistoryResponse(res: EnergyHistoryResponse, fallbackFilter: string): HistoryData {
+  const payload = res.data ?? res;
+  const records = Array.isArray(payload.records) ? payload.records : [];
+
+  return {
+    filter: payload.filter ?? fallbackFilter,
+    summary: payload.summary ?? { totalEnergyKwh: 0, recordCount: records.length },
+    records,
+  };
 }
 
 export async function getHistory(period: string): Promise<HistoryData> {
   const filter = toBackendFilter(period);
   const deviceId = await getDeviceId();
+  const encodedDeviceId = encodeURIComponent(deviceId);
 
-  // FIX: backend route is GET /api/history/energy/:deviceId (path param),
-  // not ?deviceId=... (query param). The old query-param call 404'd every time.
+  try {
+    const res = await request<EnergyHistoryResponse>(
+      `/api/history/energy/${encodedDeviceId}?filter=${filter}`,
+    );
+    return normalizeHistoryResponse(res, filter);
+  } catch (error) {
+    if ((error as Error & { status?: number }).status !== 404) throw error;
+  }
+
   const res = await request<EnergyHistoryResponse>(
-    `/api/history/energy/${encodeURIComponent(deviceId)}?filter=${filter}`,
+    `/api/history/energy?deviceId=${encodedDeviceId}&filter=${filter}`,
   );
-
-  return {
-    filter: res.filter,
-    summary: res.summary,
-    records: Array.isArray(res.records) ? res.records : [],
-  };
+  return normalizeHistoryResponse(res, filter);
 }
 
 // Reads DEVICE_ID from config. Imported here to keep historyApi self-contained.

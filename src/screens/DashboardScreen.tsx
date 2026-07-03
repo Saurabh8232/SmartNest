@@ -11,8 +11,8 @@ import Icon from 'react-native-vector-icons/Feather';
 import {
   Alert as AlertType,
   DashboardData,
+  masterShutdownAll,
   masterUnlockAll,
-  shutdownAll,
   subscribeToConnection,
   subscribeToDashboard,
   subscribeToDashboardAlerts,
@@ -129,7 +129,14 @@ export default function DashboardScreen() {
       'All locked relays on Main Board and Digital Board will be unlocked.',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Unlock All', onPress: () => { masterUnlockAll(); } },
+        {
+          text: 'Master Unlock',
+          onPress: () => {
+            masterUnlockAll().catch(() => {
+              Alert.alert('Command Failed', 'Unable to unlock all relays.');
+            });
+          },
+        },
       ]
     );
   }, []);
@@ -142,9 +149,13 @@ export default function DashboardScreen() {
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Shutdown All',
+          text: 'Master Shutdown',
           style: 'destructive',
-          onPress: () => { shutdownAll(); },
+          onPress: () => {
+            masterShutdownAll(false).catch(() => {
+              Alert.alert('Command Failed', 'Unable to shut down all relays.');
+            });
+          },
         },
       ]
     );
@@ -253,7 +264,7 @@ export default function DashboardScreen() {
           <View style={[styles.globalIcon, { backgroundColor: colors.success + '22' }]}>
             <Icon name="unlock" size={20} color={colors.success} />
           </View>
-          <Text style={[styles.globalTitle, { color: colors.success }]}>Unlock All</Text>
+          <Text style={[styles.globalTitle, { color: colors.success }]}>Master Unlock</Text>
           <Text style={styles.globalDesc}>Release all locked relays</Text>
         </TouchableOpacity>
 
@@ -266,7 +277,7 @@ export default function DashboardScreen() {
           <View style={[styles.globalIcon, { backgroundColor: colors.destructive + '22' }]}>
             <Icon name="power" size={20} color={colors.destructive} />
           </View>
-          <Text style={[styles.globalTitle, { color: colors.destructive }]}>Shutdown</Text>
+          <Text style={[styles.globalTitle, { color: colors.destructive }]}>Master Shutdown</Text>
           <Text style={styles.globalDesc}>Turn off all relays</Text>
         </TouchableOpacity>
       </View>
