@@ -7,10 +7,12 @@ import Icon from 'react-native-vector-icons/Feather';
 import {
   controlMainLightingGroup,
   controlMainRelay,
+  CommandAck,
   lockMainRelay,
   MainBoardStatus,
   rebootSystem,
   subscribeToConnection,
+  subscribeToCommandAck,
   subscribeToMainBoard,
   subscribeToShutdownAll,
 } from '../socket/liveCommunication';
@@ -35,6 +37,7 @@ export default function MainBoardScreen() {
   const [offline, setOffline] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const hasLiveDataRef = useRef(false);
+  const pendingCommandsRef = useRef(new Map<string, { rollback?: () => void }>());
 
   // ── Load cached data on app start ──────────────────────────────
   useEffect(() => {
@@ -62,6 +65,17 @@ export default function MainBoardScreen() {
       () => { setOffline(false); load(); },
       () => { setOffline(true); setRefreshing(false); },
     );
+    const removeAck = subscribeToCommandAck((ack: CommandAck) => {
+      const pending = pendingCommandsRef.current.get(ack.cmd_id);
+      if (!pending) return;
+
+      pendingCommandsRef.current.delete(ack.cmd_id);
+
+      if (!ack.ok) {
+        pending.rollback?.();
+        Alert.alert('Command Failed', ack.message || 'The command was rejected by the backend.');
+      }
+    });
     const removeShutdownAll = subscribeToShutdownAll(() => {
       setData(prev => {
         const next = {
@@ -79,20 +93,39 @@ export default function MainBoardScreen() {
       });
       setRefreshing(false);
     });
-    return () => { removeBoard(); removeConnection(); removeShutdownAll(); };
+    return () => { removeBoard(); removeConnection(); removeAck(); removeShutdownAll(); };
   }, [load]);
 
   const handleToggle = useCallback((id: string, action: 'on' | 'off') => {
+    const previousRelays = data.relays.map(relay => ({ ...relay }));
     setData(prev => ({
       ...prev,
       relays: prev.relays.map(r => r.id === id ? { ...r, isOn: action === 'on' } : r),
     }));
     if (offline) return;
-    controlMainRelay(id, action);
-  }, [offline]);
+    controlMainRelay(id, action)
+      .then(result => {
+        if (result.cmd_id) {
+          pendingCommandsRef.current.set(result.cmd_id, {
+            rollback: () => setData(prev => ({
+              ...prev,
+              relays: previousRelays,
+            })),
+          });
+        }
+      })
+      .catch(() => {
+        setData(prev => ({
+          ...prev,
+          relays: previousRelays,
+        }));
+        Alert.alert('Command Failed', 'Unable to update the relay state.');
+      });
+  }, [data.relays, offline]);
 
   const handleRelayLock = useCallback((id: string, currentLocked: boolean) => {
     const next = !currentLocked;
+    const previousRelays = data.relays.map(relay => ({ ...relay }));
     Alert.alert(
       next ? 'Lock Relay?' : 'Unlock Relay?',
       next
@@ -107,12 +140,30 @@ export default function MainBoardScreen() {
               ...prev,
               relays: prev.relays.map(r => r.id === id ? { ...r, locked: next } : r),
             }));
-            if (!offline) lockMainRelay(id, next);
+            if (offline) return;
+            lockMainRelay(id, next)
+              .then(result => {
+                if (result.cmd_id) {
+                  pendingCommandsRef.current.set(result.cmd_id, {
+                    rollback: () => setData(prev => ({
+                      ...prev,
+                      relays: previousRelays,
+                    })),
+                  });
+                }
+              })
+              .catch(() => {
+                setData(prev => ({
+                  ...prev,
+                  relays: previousRelays,
+                }));
+                Alert.alert('Command Failed', 'Unable to update the relay lock.');
+              });
           },
         },
       ],
     );
-  }, [offline]);
+  }, [data.relays, offline]);
 
   const handleReboot = useCallback(() => {
     if (offline) {
@@ -124,12 +175,26 @@ export default function MainBoardScreen() {
       'The backend will send a reboot command to the hardware for the full system.',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Reboot', onPress: rebootSystem },
+        {
+          text: 'Reboot',
+          onPress: () => {
+            rebootSystem()
+              .then(result => {
+                if (result.cmd_id) {
+                  pendingCommandsRef.current.set(result.cmd_id, {});
+                }
+              })
+              .catch(() => {
+                Alert.alert('Command Failed', 'Unable to send the reboot command.');
+              });
+          },
+        },
       ],
     );
   }, [offline]);
 
   const handleLightingGroup = useCallback((action: 'on' | 'off') => {
+    const previousRelays = data.relays.map(relay => ({ ...relay }));
     setData(prev => ({
       ...prev,
       relays: prev.relays.map(relay =>
@@ -139,8 +204,25 @@ export default function MainBoardScreen() {
       ),
     }));
     if (offline) return;
-    controlMainLightingGroup(action);
-  }, [offline]);
+    controlMainLightingGroup(action)
+      .then(result => {
+        if (result.cmd_id) {
+          pendingCommandsRef.current.set(result.cmd_id, {
+            rollback: () => setData(prev => ({
+              ...prev,
+              relays: previousRelays,
+            })),
+          });
+        }
+      })
+      .catch(() => {
+        setData(prev => ({
+          ...prev,
+          relays: previousRelays,
+        }));
+        Alert.alert('Command Failed', 'Unable to update the lighting group.');
+      });
+  }, [data.relays, offline]);
 
   return (
     <ScrollView

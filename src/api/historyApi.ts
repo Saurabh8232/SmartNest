@@ -44,8 +44,12 @@ interface EnergyHistoryResponse {
 
 export async function getHistory(period: string): Promise<HistoryData> {
   const filter = toBackendFilter(period);
+  const deviceId = await getDeviceId();
+
+  // FIX: backend route is GET /api/history/energy/:deviceId (path param),
+  // not ?deviceId=... (query param). The old query-param call 404'd every time.
   const res = await request<EnergyHistoryResponse>(
-    `/api/history/energy?deviceId=${encodeURIComponent(await getDeviceId())}&filter=${filter}`,
+    `/api/history/energy/${encodeURIComponent(deviceId)}?filter=${filter}`,
   );
 
   return {

@@ -49,6 +49,50 @@ async function apiPost(path: string, body?: object): Promise<{ cmd_id?: string }
   return res.json();
 }
 
+// ── REST snapshot (initial hydration before live socket data arrives) ────
+// The backend only pushes device:relays / device:sensors over the socket when
+// real MQTT data changes — it does NOT send a snapshot on `subscribe`. Without
+// this, screens stay blank until the hardware happens to report an update.
+// Note: GET /api/devices/:id/relays returns a DIFFERENT shape than the socket
+// event (arrays, not `items`), so we normalize it here.
+interface RestRelaysResponse {
+  success: boolean;
+  data: {
+    states: boolean[];
+    locks: boolean[];
+    masterLock: boolean;
+    digitalSwitch: boolean;
+    runtimeSec: number[];
+  };
+}
+
+function normalizeRestRelays(data: RestRelaysResponse['data']): RelaysPayload {
+  return {
+    items: data.states.map((state, idx) => ({
+      relay: idx + 1,
+      state,
+      locked: data.locks[idx] ?? false,
+      runtimeSec: data.runtimeSec[idx] ?? 0,
+    })),
+    masterLock: data.masterLock,
+    digitalSwitch: data.digitalSwitch,
+    lastUpdated: new Date().toISOString(),
+  };
+}
+
+async function fetchInitialRelays(): Promise<RelaysPayload | null> {
+  try {
+    const res = await authFetch(`${REST_BASE_URL}/api/devices/${DEVICE_ID}/relays`);
+    if (!res.ok) return null;
+    const json: RestRelaysResponse = await res.json();
+    if (!json?.data) return null;
+    return normalizeRestRelays(json.data);
+  } catch {
+    // Offline or backend unreachable — the socket will populate state once it connects.
+    return null;
+  }
+}
+
 // ── In-memory state (combines events for DashboardData) ──────────
 let latestSensors: SensorsPayload | null = null;
 let latestRelays: RelaysPayload | null = null;
@@ -145,6 +189,15 @@ export function subscribeToDashboard(listener: (data: DashboardData) => void): U
     notifyDashboardListeners();
   });
 
+  if (!latestRelays) {
+    fetchInitialRelays().then(relays => {
+      if (relays && !latestRelays) {
+        latestRelays = relays;
+        notifyDashboardListeners();
+      }
+    });
+  }
+
   socketManager.connect();
 
   return () => {
@@ -176,8 +229,8 @@ export function subscribeToDevices(listener: (devices: IoTDevice[]) => void): Un
 
 // ── Main Board ───────────────────────────────────────────────────
 export function subscribeToMainBoard(listener: (status: MainBoardStatus) => void): Unsubscribe {
-  let latestRelaysLocal: RelaysPayload | null = null;
-  let latestSensorsLocal: SensorsPayload | null = null;
+  let latestRelaysLocal: RelaysPayload | null = latestRelays;
+  let latestSensorsLocal: SensorsPayload | null = latestSensors;
 
   function emit() {
     if (!latestRelaysLocal) return;
@@ -199,8 +252,20 @@ export function subscribeToMainBoard(listener: (status: MainBoardStatus) => void
     });
   }
 
-  const removeRelays  = socketManager.on<RelaysPayload>(SOCKET_EVENTS.deviceRelays,  r => { latestRelaysLocal  = r; emit(); });
-  const removeSensors = socketManager.on<SensorsPayload>(SOCKET_EVENTS.deviceSensors, s => { latestSensorsLocal = s; emit(); });
+  if (!latestRelaysLocal) {
+    fetchInitialRelays().then(relays => {
+      if (relays && !latestRelaysLocal) {
+        latestRelaysLocal = relays;
+        latestRelays = latestRelays ?? relays;
+        emit();
+      }
+    });
+  } else {
+    emit();
+  }
+
+  const removeRelays  = socketManager.on<RelaysPayload>(SOCKET_EVENTS.deviceRelays,  r => { latestRelaysLocal  = r; latestRelays = r; emit(); });
+  const removeSensors = socketManager.on<SensorsPayload>(SOCKET_EVENTS.deviceSensors, s => { latestSensorsLocal = s; latestSensors = s; emit(); });
 
   socketManager.connect();
   return () => { removeRelays(); removeSensors(); };
@@ -213,8 +278,8 @@ export function subscribeToShutdownAll(listener: () => void): Unsubscribe {
 
 // ── Digital Board ────────────────────────────────────────────────
 export function subscribeToDigitalBoard(listener: (status: DigitalBoardStatus) => void): Unsubscribe {
-  let latestRelaysLocal: RelaysPayload | null = null;
-  let latestSensorsLocal: SensorsPayload | null = null;
+  let latestRelaysLocal: RelaysPayload | null = latestRelays;
+  let latestSensorsLocal: SensorsPayload | null = latestSensors;
 
   function emit() {
     if (!latestRelaysLocal) return;
@@ -238,8 +303,20 @@ export function subscribeToDigitalBoard(listener: (status: DigitalBoardStatus) =
     });
   }
 
-  const removeRelays  = socketManager.on<RelaysPayload>(SOCKET_EVENTS.deviceRelays,  r => { latestRelaysLocal  = r; emit(); });
-  const removeSensors = socketManager.on<SensorsPayload>(SOCKET_EVENTS.deviceSensors, s => { latestSensorsLocal = s; emit(); });
+  if (!latestRelaysLocal) {
+    fetchInitialRelays().then(relays => {
+      if (relays && !latestRelaysLocal) {
+        latestRelaysLocal = relays;
+        latestRelays = latestRelays ?? relays;
+        emit();
+      }
+    });
+  } else {
+    emit();
+  }
+
+  const removeRelays  = socketManager.on<RelaysPayload>(SOCKET_EVENTS.deviceRelays,  r => { latestRelaysLocal  = r; latestRelays = r; emit(); });
+  const removeSensors = socketManager.on<SensorsPayload>(SOCKET_EVENTS.deviceSensors, s => { latestSensorsLocal = s; latestSensors = s; emit(); });
 
   socketManager.connect();
   return () => { removeRelays(); removeSensors(); };
@@ -282,71 +359,71 @@ export function subscribeToConnection(
 // ── REST Commands — Main Board ───────────────────────────────────
 export async function controlMainRelay(relayId: string, action: 'on' | 'off'): Promise<{ cmd_id?: string }> {
   const relayNo = parseInt(relayId.replace('r', ''), 10);
-  return apiPost(`/api/device/${DEVICE_ID}/relays/${relayNo}`, { state: action === 'on' });
+  return apiPost(`/api/devices/${DEVICE_ID}/relays/${relayNo}`, { state: action === 'on' });
 }
 
 export async function controlMainLightingGroup(action: 'on' | 'off'): Promise<{ cmd_id?: string }> {
-  return apiPost(`/api/device/${DEVICE_ID}/lights`, { state: action === 'on' });
+  return apiPost(`/api/devices/${DEVICE_ID}/lights`, { state: action === 'on' });
 }
 
 export async function lockMainRelay(relayId: string, locked: boolean): Promise<{ cmd_id?: string }> {
   const relayNo = parseInt(relayId.replace('r', ''), 10);
-  return apiPost(`/api/device/${DEVICE_ID}/relays/${relayNo}/lock`, { locked });
+  return apiPost(`/api/devices/${DEVICE_ID}/relays/${relayNo}/lock`, { locked });
 }
 
 export async function setMasterShutdown(_enabled: boolean): Promise<{ cmd_id?: string }> {
-  return apiPost(`/api/device/${DEVICE_ID}/relays/off`);
+  return apiPost(`/api/devices/${DEVICE_ID}/relays/off`);
 }
 
 export async function rebootMainBoard(): Promise<{ cmd_id?: string }> {
-  return apiPost(`/api/device/${DEVICE_ID}/system/reboot`);
+  return apiPost(`/api/devices/${DEVICE_ID}/system/reboot`);
 }
 
 // ── REST Commands — Digital Board ────────────────────────────────
 export async function controlDigitalRelay(_relayId: string, action: 'on' | 'off'): Promise<{ cmd_id?: string }> {
-  return apiPost(`/api/device/${DEVICE_ID}/relays/7`, { state: action === 'on' });
+  return apiPost(`/api/devices/${DEVICE_ID}/relays/7`, { state: action === 'on' });
 }
 
 export async function lockDigitalRelay(_relayId: string, locked: boolean): Promise<{ cmd_id?: string }> {
-  return apiPost(`/api/device/${DEVICE_ID}/relays/7/lock`, { locked });
+  return apiPost(`/api/devices/${DEVICE_ID}/relays/7/lock`, { locked });
 }
 
 // ── REST Commands — Global ────────────────────────────────────────
 export async function masterUnlockAll(): Promise<{ cmd_id?: string }> {
-  return apiPost(`/api/device/${DEVICE_ID}/relays/unlock`);
+  return apiPost(`/api/devices/${DEVICE_ID}/relays/unlock`);
 }
 
 export async function masterShutdownAll(_enabled: boolean): Promise<{ cmd_id?: string }> {
-  return apiPost(`/api/device/${DEVICE_ID}/relays/off`);
+  return apiPost(`/api/devices/${DEVICE_ID}/relays/off`);
 }
 
 export async function shutdownAll(): Promise<void> {
-  await apiPost(`/api/device/${DEVICE_ID}/relays/off`);
+  await apiPost(`/api/devices/${DEVICE_ID}/relays/off`);
   shutdownAllListeners.forEach(listener => listener());
 }
 
 export async function rebootSystem(): Promise<{ cmd_id?: string }> {
-  return apiPost(`/api/device/${DEVICE_ID}/system/reboot`);
+  return apiPost(`/api/devices/${DEVICE_ID}/system/reboot`);
 }
 
 // ── REST Commands — AC ────────────────────────────────────────────
 export async function sendAcCommand(action: string, value?: unknown): Promise<void> {
   if (action === 'power_on') {
-    await apiPost(`/api/device/${DEVICE_ID}/ac`, { power: true });
+    await apiPost(`/api/devices/${DEVICE_ID}/ac`, { power: true });
   } else if (action === 'power_off') {
-    await apiPost(`/api/device/${DEVICE_ID}/ac`, { power: false });
+    await apiPost(`/api/devices/${DEVICE_ID}/ac`, { power: false });
   } else if (action === 'set_temperature') {
     _acTemp = value as number;
-    await apiPost(`/api/device/${DEVICE_ID}/ac`, { temp: value });
+    await apiPost(`/api/devices/${DEVICE_ID}/ac`, { temp: value });
   } else if (action === 'temperature_up') {
     _acTemp = Math.min(_acTemp + 1, 30);
-    await apiPost(`/api/device/${DEVICE_ID}/ac`, { tempStep: 'up' });
+    await apiPost(`/api/devices/${DEVICE_ID}/ac`, { tempStep: 'up' });
   } else if (action === 'temperature_down') {
     _acTemp = Math.max(_acTemp - 1, 16);
-    await apiPost(`/api/device/${DEVICE_ID}/ac`, { tempStep: 'down' });
+    await apiPost(`/api/devices/${DEVICE_ID}/ac`, { tempStep: 'down' });
   } else if (action === 'set_fan_speed') {
     _acFan = value as AcStatus['fanSpeed'];
-    await apiPost(`/api/device/${DEVICE_ID}/ac`, { fan: value });
+    await apiPost(`/api/devices/${DEVICE_ID}/ac`, { fan: value });
   }
 }
 
