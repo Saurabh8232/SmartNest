@@ -14,7 +14,14 @@ import {
 import { DEVICE_ID, REST_BASE_URL } from '../config/communication';
 import { SOCKET_EVENTS } from './events';
 import socketManager from './SocketManager';
-import { authFetch, getAccessToken, subscribeToSession } from '../authentication/authService';
+import {
+  authFetch,
+  clearSession,
+  getCurrentSession,
+  getAccessToken,
+  refreshAccessToken,
+  subscribeToSession,
+} from '../authentication/authService';
 
 type Unsubscribe = () => void;
 const DEVICE_API_PATH = `/api/device/${DEVICE_ID}`;
@@ -41,12 +48,45 @@ socketManager.setAuthToken(getAccessToken());
 
 // ── REST helper ──────────────────────────────────────────────────
 async function apiPost(path: string, body?: object): Promise<{ cmd_id?: string }> {
-  const res = await authFetch(`${REST_BASE_URL}${path}`, {
+  const fetchOpts: RequestInit = {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: body ? JSON.stringify(body) : undefined,
-  });
+  };
+
+  let res = await authFetch(`${REST_BASE_URL}${path}`, fetchOpts);
+
   if (!res.ok) {
+    // FIX (Issue 1): This backend returns 404 (not 401) for expired or invalid
+    // tokens to hide route existence. It also returns 401 for demo/missing tokens.
+    // Handle both the same way: attempt a manual refresh + retry before giving up.
+    if (res.status === 404 || res.status === 401) {
+      const session = getCurrentSession();
+
+      // Demo session or no token at all — cannot recover, must log in for real.
+      if (!session?.accessToken || session.isDemo) {
+        clearSession().catch(() => {});
+        throw new Error(
+          'Authentication required. Please log out and log in again to send commands.',
+        );
+      }
+
+      // Real session with a refresh token — try to get a new access token and retry.
+      if (session.refreshToken) {
+        const refreshed = await refreshAccessToken();
+        if (refreshed?.accessToken) {
+          const retryRes = await authFetch(`${REST_BASE_URL}${path}`, fetchOpts);
+          if (retryRes.ok) return retryRes.json();
+        }
+      }
+
+      // Refresh failed or retry still rejected — session is fully stale.
+      clearSession().catch(() => {});
+      throw new Error(
+        'Your session has expired. Please log out and log in again to send commands.',
+      );
+    }
+
     let detail = '';
     try {
       const json = await res.json();
@@ -89,17 +129,37 @@ function normalizeRestRelays(data: RestRelaysResponse['data']): RelaysPayload {
   };
 }
 
+// FIX (Issue 3 — Performance): Deduplicate fetchInitialRelays so that multiple
+// screens subscribing at the same time (subscribeToDashboard, subscribeToMainBoard,
+// subscribeToDigitalBoard) only issue a SINGLE network request rather than three.
+let _relaysFetchPromise: Promise<RelaysPayload | null> | null = null;
+
 async function fetchInitialRelays(): Promise<RelaysPayload | null> {
-  try {
-    const res = await authFetch(`${REST_BASE_URL}${DEVICE_API_PATH}/relays`);
-    if (!res.ok) return null;
-    const json: RestRelaysResponse = await res.json();
-    if (!json?.data) return null;
-    return normalizeRestRelays(json.data);
-  } catch {
-    // Offline or backend unreachable — the socket will populate state once it connects.
-    return null;
-  }
+  // If we already have live relay data, skip the REST fetch entirely.
+  if (latestRelays) return latestRelays;
+
+  // If a fetch is already in-flight, share its promise with all callers.
+  if (_relaysFetchPromise) return _relaysFetchPromise;
+
+  _relaysFetchPromise = (async () => {
+    try {
+      const res = await authFetch(`${REST_BASE_URL}${DEVICE_API_PATH}/relays`);
+      if (!res.ok) return null;
+      const json: RestRelaysResponse = await res.json();
+      if (!json?.data) return null;
+      return normalizeRestRelays(json.data);
+    } catch {
+      // Offline or backend unreachable — the socket will populate state once it connects.
+      return null;
+    }
+  })();
+
+  // Clear the shared promise after it settles so a later retry can re-fetch if needed.
+  _relaysFetchPromise.finally(() => {
+    _relaysFetchPromise = null;
+  });
+
+  return _relaysFetchPromise;
 }
 
 // ── In-memory state (combines events for DashboardData) ──────────
@@ -151,10 +211,20 @@ function buildDashboard(): DashboardData | null {
   };
 }
 
+// FIX (Issue 3 — Performance): Batch rapid socket events so that multiple events
+// arriving within the same JS tick (sensors + relays + status at once) only trigger
+// ONE dashboard rebuild + listener notification instead of one per event.
+let _dashboardNotifyScheduled = false;
+
 function notifyDashboardListeners(): void {
-  const dash = buildDashboard();
-  if (!dash) return;
-  dashboardListeners.forEach(l => l(dash));
+  if (_dashboardNotifyScheduled) return;
+  _dashboardNotifyScheduled = true;
+  setTimeout(() => {
+    _dashboardNotifyScheduled = false;
+    const dash = buildDashboard();
+    if (!dash) return;
+    dashboardListeners.forEach(l => l(dash));
+  }, 0);
 }
 
 // ── Raw event subscriptions ──────────────────────────────────────

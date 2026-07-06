@@ -19,6 +19,11 @@ import {
 } from '../socket/liveCommunication';
 import { TimeSeriesPoint } from '../types/communication';
 import { REST_BASE_URL } from '../config/communication';
+// FIX (Issue 3 — Performance): Use authFetch so that the /dashboard trend
+// request includes the Authorization header. Previously plain fetch() was used,
+// which omitted the auth header and would fail on a backend that requires JWT
+// for all endpoints.
+import { authFetch } from '../authentication/authService';
 import MiniChart from '../components/MiniChart';
 import colors from '../constants/colors';
 
@@ -75,9 +80,12 @@ export default function DashboardScreen() {
     });
   }, []);
 
+  // FIX (Issue 3 — Performance): Use authFetch instead of plain fetch() so
+  // that the Authorization header is included, matching the requirement that
+  // all device endpoints require a valid JWT.
   const fetchTrends = useCallback(async () => {
     try {
-      const res = await fetch(`${REST_BASE_URL}/dashboard`);
+      const res = await authFetch(`${REST_BASE_URL}/dashboard`);
       if (!res.ok) return;
       const json = await res.json();
       if (Array.isArray(json.powerHistory)) setPowerHistory(json.powerHistory);
@@ -143,7 +151,7 @@ export default function DashboardScreen() {
         },
       ]
     );
-  }, []);
+  }, [commandErrorMessage]);
 
   // ── Master Shutdown (one-shot) ───────────────────────────────
   const handleMasterShutdown = useCallback(() => {
@@ -163,7 +171,7 @@ export default function DashboardScreen() {
         },
       ]
     );
-  }, []);
+  }, [commandErrorMessage]);
 
   const updatedTime = new Date(data.lastUpdated).toLocaleTimeString([], {
     hour: '2-digit', minute: '2-digit',

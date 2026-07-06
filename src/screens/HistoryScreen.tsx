@@ -69,9 +69,22 @@ export default function HistoryScreen() {
   const [offline, setOffline] = useState(false);
   const [loading, setLoading] = useState(true);
   const [errorText, setErrorText] = useState('');
+
+  // FIX (Issue 2 — History freeze): Track an AbortController so we can cancel
+  // the previous request the moment the user switches to a different period
+  // filter. Without this, the old (potentially slow) request keeps running
+  // concurrently with the new one. If the old request timed out (8 s) the user
+  // experienced up to 8 seconds of frozen/loading state even after changing
+  // the filter.
+  const abortRef    = useRef<AbortController | null>(null);
   const requestIdRef = useRef(0);
 
   const load = useCallback(async () => {
+    // Cancel any in-flight request from a previous period selection.
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     const requestId = requestIdRef.current + 1;
     requestIdRef.current = requestId;
 
@@ -79,11 +92,14 @@ export default function HistoryScreen() {
       setOffline(false);
       setErrorText('');
       setLoading(true);
-      const nextData = await getHistory(period);
+      const nextData = await getHistory(period, controller.signal);
       if (requestIdRef.current !== requestId) return;
       setData(nextData);
     } catch (error) {
       if (requestIdRef.current !== requestId) return;
+      // Ignore cancellations caused by the user changing the filter — a new
+      // request is already in-flight for the newly selected period.
+      if ((error as Error).name === 'AbortError') return;
       setOffline(true);
       setData(DEFAULT_DATA);
       setErrorText(error instanceof Error ? error.message : 'Unable to load history.');
@@ -94,6 +110,12 @@ export default function HistoryScreen() {
   }, [period]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Abort any pending request when the component unmounts to avoid state
+  // updates on an unmounted component.
+  useEffect(() => {
+    return () => { abortRef.current?.abort(); };
+  }, []);
 
   const trend = data.records.map(record => ({
     timestamp: record.date,
@@ -174,30 +196,24 @@ export default function HistoryScreen() {
             </TouchableOpacity>
           );
         })}
-        {/**
-         * AC tab intentionally commented out for now.
-         * {/
-         * <TouchableOpacity
-         *   key="ac"
-         *   onPress={() => setTab('ac')}
-         *   style={[styles.tabBtn, {
-         *     backgroundColor: tab === 'ac' ? '#38bdf8' : colors.card,
-         *     borderColor: tab === 'ac' ? '#38bdf8' : colors.border,
-         *   }]}
-         * >
-         *   <Icon name="wind" size={13} color={tab === 'ac' ? colors.background : '#38bdf8'} />
-         *   <Text style={[styles.tabText, { color: tab === 'ac' ? colors.background : colors.mutedForeground }]}>AC</Text>
-         * </TouchableOpacity>
-         * /}
-        */}
       </ScrollView>
 
-      {/* ── Loading / Offline ── */}
-      {(offline || loading) ? (
+      {/* ── Loading / Offline / No Data ── */}
+      {loading ? (
+        // FIX (Issue 2 — History freeze): Show loading state while request is
+        // in-flight. If the user changes period the old request is cancelled and
+        // the loading indicator immediately reflects the new request instead of
+        // keeping the screen stuck on the previous period's data.
         <View style={styles.emptyCard}>
-          <Icon name={offline ? 'wifi-off' : 'clock'} size={42} color={colors.mutedForeground} />
-          <Text style={styles.emptyTitle}>{offline ? 'Not Connected' : 'Loading...'}</Text>
-          {offline && <Text style={styles.emptyDesc}>{errorText || 'Check your backend connection and login session.'}</Text>}
+          <Icon name="clock" size={42} color={colors.mutedForeground} />
+          <Text style={styles.emptyTitle}>Loading...</Text>
+        </View>
+
+      ) : offline ? (
+        <View style={styles.emptyCard}>
+          <Icon name="wifi-off" size={42} color={colors.mutedForeground} />
+          <Text style={styles.emptyTitle}>Not Connected</Text>
+          <Text style={styles.emptyDesc}>{errorText || 'Check your backend connection and login session.'}</Text>
         </View>
 
       ) : !hasData ? (
@@ -207,7 +223,7 @@ export default function HistoryScreen() {
             <Icon name="trending-up" size={36} color={colors.mutedForeground} />
           </View>
           <Text style={styles.emptyTitle}>No Data Available</Text>
-          <Text style={styles.emptyDesc}>Select a period and category to view data.</Text>
+          <Text style={styles.emptyDesc}>No records found for the selected period.</Text>
         </View>
 
       ) : (
@@ -225,6 +241,7 @@ export default function HistoryScreen() {
                   <Text style={styles.kwhText}>kWh</Text>
                 </View>
               </View>
+              {/* MiniChart internally downsamples to 60 points max — safe for any period */}
               <MiniChart data={trend} color={colors.success} height={80} width={chartWidth} />
               <View style={styles.xAxis}>
                 {['00:00', '06:00', '12:00', '18:00', '24:00'].map(l => (
