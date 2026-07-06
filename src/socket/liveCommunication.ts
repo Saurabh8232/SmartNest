@@ -24,7 +24,7 @@ import {
 } from '../authentication/authService';
 
 type Unsubscribe = () => void;
-const DEVICE_API_PATH = `/api/device/${DEVICE_ID}`;
+const DEVICE_API_PATH = `/api/devices/${DEVICE_ID}`;
 
 // ── Relay name maps (backend sends numbers only, names are local) ─
 const MAIN_RELAY_NAMES: Record<number, string> = {
@@ -102,7 +102,7 @@ async function apiPost(path: string, body?: object): Promise<{ cmd_id?: string }
 // The backend only pushes device:relays / device:sensors over the socket when
 // real MQTT data changes — it does NOT send a snapshot on `subscribe`. Without
 // this, screens stay blank until the hardware happens to report an update.
-// Note: GET /api/device/:id/relays returns a DIFFERENT shape than the socket
+// Note: GET /api/devices/:id/relays returns a DIFFERENT shape than the socket
 // event (arrays, not `items`), so we normalize it here.
 interface RestRelaysResponse {
   success: boolean;
@@ -172,6 +172,47 @@ const unlockAllListeners = new Set<() => void>();
 
 const dashboardListeners = new Set<(d: DashboardData) => void>();
 
+// ── Staleness watchdog ─────────────────────────────────────────────
+// The backend only pushes device:* socket events when it actually receives an
+// MQTT message. Several MQTT topics (live/status, live/relays, live/slaves)
+// are published with `retain: true`, so a broker can replay an OLD cached
+// message the moment the backend reconnects — even if the physical device is
+// offline. That replayed message looks identical to a fresh one (same shape,
+// same "online" booleans), so without tracking *when we actually last heard
+// something*, the UI can show "online" with frozen/stale data indefinitely.
+//
+// Fix: track the wall-clock time of the last real socket event we received
+// (of any live-data type) and treat the device as stale if nothing has
+// arrived within STALE_THRESHOLD_MS. The firmware heartbeats live/sensors
+// (retain: false, so it can NEVER be replayed) roughly every 30s, so 3x that
+// gives headroom for normal jitter while still catching a truly dead device.
+const STALE_THRESHOLD_MS = 90_000; // 3x the ~30s firmware heartbeat interval
+let lastLiveUpdateAt: number | null = null;
+
+function markLiveUpdate(): void {
+  lastLiveUpdateAt = Date.now();
+}
+
+function isLiveDataStale(): boolean {
+  if (lastLiveUpdateAt === null) return true;
+  return Date.now() - lastLiveUpdateAt > STALE_THRESHOLD_MS;
+}
+
+// Track live-data arrival globally (independent of which screens are mounted)
+// so staleness is detected even if the dashboard listener isn't active.
+socketManager.on<SensorsPayload>(SOCKET_EVENTS.deviceSensors, markLiveUpdate);
+socketManager.on<RelaysPayload>(SOCKET_EVENTS.deviceRelays, markLiveUpdate);
+socketManager.on<StatusPayload>(SOCKET_EVENTS.deviceStatus, markLiveUpdate);
+socketManager.on<SlavesPayload>(SOCKET_EVENTS.deviceSlaves, markLiveUpdate);
+
+// Periodically re-evaluate staleness even when no new socket event arrives —
+// a silent/dead device produces NO events at all, so without this timer the
+// UI would keep showing the last-known "online" state forever.
+setInterval(() => {
+  if (dashboardListeners.size === 0) return;
+  notifyDashboardListeners();
+}, 10_000);
+
 function buildDashboard(): DashboardData | null {
   if (!latestSensors) return null;
   const activeRelays = latestRelays
@@ -188,9 +229,14 @@ function buildDashboard(): DashboardData | null {
 
   // systemOnline: derived from device:slaves (authoritative for PZEM/Digital connectivity).
   // Falls back to whether we have received any status heartbeat at all.
-  const systemOnline = latestSlaves
+  // A device-reported "online" flag can be lying if it came from a retained
+  // MQTT replay rather than a fresh message, so it is gated by our own
+  // staleness watchdog: if nothing real has arrived in a while, we always
+  // report offline regardless of what the last payload claimed.
+  const reportedOnline = latestSlaves
     ? latestSlaves.pzem.online
     : latestStatus !== null;
+  const systemOnline = reportedOnline && !isLiveDataStale();
 
   return {
     systemOnline,
