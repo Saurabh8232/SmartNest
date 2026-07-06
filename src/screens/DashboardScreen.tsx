@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   Alert,
+  Animated,
   RefreshControl, ScrollView, StyleSheet,
   Text, TouchableOpacity, View, useWindowDimensions,
 } from 'react-native';
@@ -11,9 +12,11 @@ import Icon from 'react-native-vector-icons/Feather';
 import {
   Alert as AlertType,
   DashboardData,
+  DeviceConnectionPayload,
   masterShutdownAll,
   masterUnlockAll,
   subscribeToConnection,
+  subscribeToDeviceConnection,
   subscribeToDashboard,
   subscribeToDashboardAlerts,
 } from '../socket/liveCommunication';
@@ -48,6 +51,15 @@ function severityIcon(s: string) {
   return 'info';
 }
 
+// ── Format lastSeen timestamp as human-readable relative time ─────
+function formatLastSeen(iso: string): string {
+  const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (diff < 60) return 'just now';
+  if (diff < 3600) return `${Math.floor(diff / 60)} min ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)} hr ago`;
+  return `${Math.floor(diff / 86400)} days ago`;
+}
+
 export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
@@ -60,6 +72,12 @@ export default function DashboardScreen() {
   const [powerHistory, setPowerHistory] = useState<TimeSeriesPoint[]>([]);
   const [currentHistory, setCurrentHistory] = useState<TimeSeriesPoint[]>([]);
   const hasLiveDashboardDataRef = useRef(false);
+
+  // ── Device connection toast ───────────────────────────────────
+  const [connectionToast, setConnectionToast] = useState<DeviceConnectionPayload | null>(null);
+  const toastAnim = useRef(new Animated.Value(0)).current;
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevOnlineRef = useRef<boolean | null>(null); // null = initial event not yet received
 
   const commandErrorMessage = useCallback((error: unknown, fallback: string) => (
     error instanceof Error ? error.message : fallback
@@ -105,6 +123,13 @@ export default function DashboardScreen() {
     const removeDashboard = subscribeToDashboard(dash => {
       hasLiveDashboardDataRef.current = true;
       setData(dash);
+      // live graphs are updated in real-time, but we only keep the last 60 points to avoid memory bloat
+       setPowerHistory(prev =>
+    [...prev, { timestamp: dash.lastUpdated, value: dash.power }].slice(-60)
+  );
+  setCurrentHistory(prev =>
+    [...prev, { timestamp: dash.lastUpdated, value: dash.current }].slice(-60)
+  );
       setOffline(false);
       setRefreshing(false);
       // if (dash.powerHistory?.length)   setPowerHistory(dash.powerHistory);
@@ -133,6 +158,49 @@ export default function DashboardScreen() {
       removeConnection();
     };
   }, [load]);
+
+  // ── Subscribe to device:connection — show toast only on transitions ──
+  // First event after subscribe is the initial snapshot — silently stored,
+  // no popup. Only subsequent online ↔ offline flips trigger the toast.
+  useEffect(() => {
+    const remove = subscribeToDeviceConnection(payload => {
+      const wasNull = prevOnlineRef.current === null;
+      const changed = prevOnlineRef.current !== payload.online;
+
+      prevOnlineRef.current = payload.online;
+
+      // First event is the initial state snapshot — don't show popup
+      if (wasNull || !changed) return;
+
+      // Clear any existing auto-dismiss timer
+      if (toastTimerRef.current) {
+        clearTimeout(toastTimerRef.current);
+        toastTimerRef.current = null;
+      }
+
+      // Slide the toast in
+      setConnectionToast(payload);
+      Animated.timing(toastAnim, {
+        toValue: 1,
+        duration: 250,
+        useNativeDriver: true,
+      }).start();
+
+      // Auto-dismiss after 2 seconds
+      toastTimerRef.current = setTimeout(() => {
+        Animated.timing(toastAnim, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }).start(() => setConnectionToast(null));
+      }, 2000);
+    });
+
+    return () => {
+      remove();
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    };
+  }, [toastAnim]);
 
   // ── Master Unlock All ────────────────────────────────────────
   const handleMasterUnlock = useCallback(() => {
@@ -197,151 +265,195 @@ export default function DashboardScreen() {
   const chartW = (width - 32 - 10) / 2;
 
   return (
-    <ScrollView
-      style={styles.scroll}
-      contentContainerStyle={[styles.content, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 76 }]}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.primary} />}
-    >
-      {/* Header */}
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.title}>Dashboard</Text>
-          <Text style={styles.updatedText}>Updated {updatedTime}</Text>
-        </View>
-        <View style={[styles.statusPill, { borderColor: data.systemOnline && !offline ? colors.success + '55' : colors.destructive + '55', backgroundColor: data.systemOnline && !offline ? colors.success + '15' : colors.destructive + '15' }]}>
-          <View style={[styles.statusDot, { backgroundColor: data.systemOnline && !offline ? colors.success : colors.destructive }]} />
-          <Text style={[styles.statusText, { color: data.systemOnline && !offline ? colors.success : colors.destructive }]}>
-            {offline ? 'Offline' : data.systemOnline ? 'Online' : 'Offline'}
-          </Text>
-        </View>
-      </View>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
 
-      {/* Live Parameters */}
-      <Text style={styles.sectionLabel}>LIVE PARAMETERS</Text>
-      <View style={styles.cardsGrid}>
-        {paramCards.map(c => (
-          <View key={c.label} style={[styles.paramCard, { width: cardW, borderTopColor: c.color }]}>
-            <View style={styles.paramTop}>
-              <View style={[styles.paramIconWrap, { backgroundColor: c.color + '20' }]}>
-                <Icon name={c.icon} size={14} color={c.color} />
-              </View>
-              <Text style={styles.paramLabel}>{c.label}</Text>
-            </View>
-            <Text style={[styles.paramValue, { color: c.color }]}>
-              {c.value}<Text style={[styles.paramUnit, { color: c.color + 'bb' }]}>{c.unit ? ` ${c.unit}` : ''}</Text>
+      {/* ── Floating device connection toast ─────────────────────── */}
+      {connectionToast && (
+        <Animated.View
+          style={[
+            styles.connectionToast,
+            {
+              top: insets.top + 12,
+              backgroundColor: connectionToast.online
+                ? colors.success + 'F0'
+                : colors.destructive + 'F0',
+              opacity: toastAnim,
+              transform: [{
+                translateY: toastAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [-60, 0],
+                }),
+              }],
+            },
+          ]}
+        >
+          <Icon
+            name={connectionToast.online ? 'wifi' : 'wifi-off'}
+            size={16}
+            color="#fff"
+          />
+          <View style={styles.connectionToastText}>
+            <Text style={styles.connectionToastTitle}>
+              {connectionToast.deviceId} is{' '}
+              <Text style={{ fontWeight: '900' }}>
+                {connectionToast.online ? 'Online' : 'Offline'}
+              </Text>
             </Text>
+            {!connectionToast.online && connectionToast.lastSeen && (
+              <Text style={styles.connectionToastSub}>
+                Last seen {formatLastSeen(connectionToast.lastSeen)}
+              </Text>
+            )}
           </View>
-        ))}
-      </View>
-
-      {/* Trend Graphs */}
-      <Text style={styles.sectionLabel}>TREND GRAPHS</Text>
-      <View style={styles.chartsRow}>
-        <View style={[styles.chartCard, { width: chartW }]}>
-          <Text style={styles.chartTitle}>Power Trend</Text>
-          <Text style={styles.chartSub}>24 Hours</Text>
-          {powerHistory.length > 1 ? (
-            <MiniChart data={powerHistory} color={colors.accent} height={56} width={chartW - 24} />
-          ) : (
-            <View style={[styles.noChartData, { width: chartW - 24 }]}>
-              <Text style={styles.noChartText}>No data</Text>
-            </View>
-          )}
-          <Text style={[styles.chartCurrent, { color: colors.accent }]}>{data.power.toFixed(0)} W</Text>
-        </View>
-
-        <View style={[styles.chartCard, { width: chartW }]}>
-          <Text style={styles.chartTitle}>Energy Usage</Text>
-          <Text style={styles.chartSub}>Today</Text>
-          {currentHistory.length > 1 ? (
-            <MiniChart data={currentHistory} color={colors.success} height={56} width={chartW - 24} />
-          ) : (
-            <View style={[styles.noChartData, { width: chartW - 24 }]}>
-              <Text style={styles.noChartText}>No data</Text>
-            </View>
-          )}
-          <Text style={[styles.chartCurrent, { color: colors.success }]}>{data.energy.toFixed(2)} kWh</Text>
-        </View>
-      </View>
-
-      {/* ── GLOBAL SYSTEM CONTROLS ─────────────────────────────── */}
-      <Text style={styles.sectionLabel}>GLOBAL SYSTEM CONTROLS</Text>
-      <View style={styles.globalRow}>
-        {/* Master Unlock All */}
-        <TouchableOpacity
-          onPress={handleMasterUnlock}
-          activeOpacity={0.8}
-          style={styles.unlockBtn}
-        >
-          <View style={[styles.globalIcon, { backgroundColor: colors.success + '22' }]}>
-            <Icon name="unlock" size={20} color={colors.success} />
-          </View>
-          <Text style={[styles.globalTitle, { color: colors.success }]}>Master Unlock</Text>
-          <Text style={styles.globalDesc}>Release all locked relays</Text>
-        </TouchableOpacity>
-
-        {/* Master Shutdown */}
-        <TouchableOpacity
-          onPress={handleMasterShutdown}
-          activeOpacity={0.8}
-          style={styles.shutdownBtn}
-        >
-          <View style={[styles.globalIcon, { backgroundColor: colors.destructive + '22' }]}>
-            <Icon name="power" size={20} color={colors.destructive} />
-          </View>
-          <Text style={[styles.globalTitle, { color: colors.destructive }]}>Master Shutdown</Text>
-          <Text style={styles.globalDesc}>Turn off all relays</Text>
-        </TouchableOpacity>
-      </View>
-      {/* ── END GLOBAL CONTROLS ────────────────────────────────── */}
-
-      {/* Recent Alerts */}
-      <View style={styles.alertsHeader}>
-        <Text style={styles.sectionLabel}>RECENT ALERTS</Text>
-        <TouchableOpacity onPress={() => navigation.navigate('AllAlerts')}>
-          <Text style={[styles.viewAllLink, { color: colors.primary }]}>View All</Text>
-        </TouchableOpacity>
-      </View>
-
-      {alerts.length === 0 ? (
-        <View style={styles.noAlerts}>
-          <Icon name="check-circle" size={20} color={colors.success} />
-          <Text style={styles.noAlertsText}>
-            {offline ? 'Connect backend to see alerts' : 'No active alerts — all systems normal'}
-          </Text>
-        </View>
-      ) : (
-        <View style={styles.alertList}>
-          {alerts.map(a => {
-            const c = severityColor(a.severity);
-            return (
-              <View key={a.id} style={[styles.alertRow, { borderLeftColor: c }]}>
-                <Icon name={severityIcon(a.severity)} size={15} color={c} />
-                <View style={styles.flex1}>
-                  <Text style={styles.alertTitle} numberOfLines={1}>{a.title}</Text>
-                  <Text style={styles.alertMeta}>
-                    {a.deviceName ? `${a.deviceName} · ` : ''}
-                    {new Date(a.timestamp).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                  </Text>
-                </View>
-                <View style={[styles.severityTag, { backgroundColor: c + '22' }]}>
-                  <Text style={[styles.severityText, { color: c }]}>{a.severity.toUpperCase()}</Text>
-                </View>
-              </View>
-            );
-          })}
-        </View>
+        </Animated.View>
       )}
 
-      <TouchableOpacity
-        style={styles.viewAllAlertsBtn}
-        onPress={() => navigation.navigate('AllAlerts')}
-        activeOpacity={0.8}
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={[styles.content, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 76 }]}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.primary} />}
       >
-        <Icon name="bell" size={14} color={colors.primary} />
-        <Text style={styles.viewAllAlertsBtnText}>View All Alerts</Text>
-      </TouchableOpacity>
-    </ScrollView>
+        {/* Header */}
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.title}>Dashboard</Text>
+            <Text style={styles.updatedText}>Updated {updatedTime}</Text>
+          </View>
+          <View style={[styles.statusPill, { borderColor: data.systemOnline && !offline ? colors.success + '55' : colors.destructive + '55', backgroundColor: data.systemOnline && !offline ? colors.success + '15' : colors.destructive + '15' }]}>
+            <View style={[styles.statusDot, { backgroundColor: data.systemOnline && !offline ? colors.success : colors.destructive }]} />
+            <Text style={[styles.statusText, { color: data.systemOnline && !offline ? colors.success : colors.destructive }]}>
+              {offline ? 'Offline' : data.systemOnline ? 'Online' : 'Offline'}
+            </Text>
+          </View>
+        </View>
+
+        {/* Live Parameters */}
+        <Text style={styles.sectionLabel}>LIVE PARAMETERS</Text>
+        <View style={styles.cardsGrid}>
+          {paramCards.map(c => (
+            <View key={c.label} style={[styles.paramCard, { width: cardW, borderTopColor: c.color }]}>
+              <View style={styles.paramTop}>
+                <View style={[styles.paramIconWrap, { backgroundColor: c.color + '20' }]}>
+                  <Icon name={c.icon} size={14} color={c.color} />
+                </View>
+                <Text style={styles.paramLabel}>{c.label}</Text>
+              </View>
+              <Text style={[styles.paramValue, { color: c.color }]}>
+                {c.value}<Text style={[styles.paramUnit, { color: c.color + 'bb' }]}>{c.unit ? ` ${c.unit}` : ''}</Text>
+              </Text>
+            </View>
+          ))}
+        </View>
+
+        {/* Trend Graphs */}
+        <Text style={styles.sectionLabel}>TREND GRAPHS</Text>
+        <View style={styles.chartsRow}>
+          <View style={[styles.chartCard, { width: chartW }]}>
+            <Text style={styles.chartTitle}>Power Trend</Text>
+            <Text style={styles.chartSub}>24 Hours</Text>
+            {powerHistory.length > 1 ? (
+              <MiniChart data={powerHistory} color={colors.accent} height={56} width={chartW - 24} />
+            ) : (
+              <View style={[styles.noChartData, { width: chartW - 24 }]}>
+                <Text style={styles.noChartText}>No data</Text>
+              </View>
+            )}
+            <Text style={[styles.chartCurrent, { color: colors.accent }]}>{data.power.toFixed(0)} W</Text>
+          </View>
+
+          <View style={[styles.chartCard, { width: chartW }]}>
+            <Text style={styles.chartTitle}>Energy Usage</Text>
+            <Text style={styles.chartSub}>Today</Text>
+            {currentHistory.length > 1 ? (
+              <MiniChart data={currentHistory} color={colors.success} height={56} width={chartW - 24} />
+            ) : (
+              <View style={[styles.noChartData, { width: chartW - 24 }]}>
+                <Text style={styles.noChartText}>No data</Text>
+              </View>
+            )}
+            <Text style={[styles.chartCurrent, { color: colors.success }]}>{data.energy.toFixed(2)} kWh</Text>
+          </View>
+        </View>
+
+        {/* ── GLOBAL SYSTEM CONTROLS ─────────────────────────────── */}
+        <Text style={styles.sectionLabel}>GLOBAL SYSTEM CONTROLS</Text>
+        <View style={styles.globalRow}>
+          {/* Master Unlock All */}
+          <TouchableOpacity
+            onPress={handleMasterUnlock}
+            activeOpacity={0.8}
+            style={styles.unlockBtn}
+          >
+            <View style={[styles.globalIcon, { backgroundColor: colors.success + '22' }]}>
+              <Icon name="unlock" size={20} color={colors.success} />
+            </View>
+            <Text style={[styles.globalTitle, { color: colors.success }]}>Master Unlock</Text>
+            <Text style={styles.globalDesc}>Release all locked relays</Text>
+          </TouchableOpacity>
+
+          {/* Master Shutdown */}
+          <TouchableOpacity
+            onPress={handleMasterShutdown}
+            activeOpacity={0.8}
+            style={styles.shutdownBtn}
+          >
+            <View style={[styles.globalIcon, { backgroundColor: colors.destructive + '22' }]}>
+              <Icon name="power" size={20} color={colors.destructive} />
+            </View>
+            <Text style={[styles.globalTitle, { color: colors.destructive }]}>Master Shutdown</Text>
+            <Text style={styles.globalDesc}>Turn off all relays</Text>
+          </TouchableOpacity>
+        </View>
+        {/* ── END GLOBAL CONTROLS ────────────────────────────────── */}
+
+        {/* Recent Alerts */}
+        <View style={styles.alertsHeader}>
+          <Text style={styles.sectionLabel}>RECENT ALERTS</Text>
+          <TouchableOpacity onPress={() => navigation.navigate('AllAlerts')}>
+            <Text style={[styles.viewAllLink, { color: colors.primary }]}>View All</Text>
+          </TouchableOpacity>
+        </View>
+
+        {alerts.length === 0 ? (
+          <View style={styles.noAlerts}>
+            <Icon name="check-circle" size={20} color={colors.success} />
+            <Text style={styles.noAlertsText}>
+              {offline ? 'Connect backend to see alerts' : 'No active alerts — all systems normal'}
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.alertList}>
+            {alerts.map(a => {
+              const c = severityColor(a.severity);
+              return (
+                <View key={a.id} style={[styles.alertRow, { borderLeftColor: c }]}>
+                  <Icon name={severityIcon(a.severity)} size={15} color={c} />
+                  <View style={styles.flex1}>
+                    <Text style={styles.alertTitle} numberOfLines={1}>{a.title}</Text>
+                    <Text style={styles.alertMeta}>
+                      {a.deviceName ? `${a.deviceName} · ` : ''}
+                      {new Date(a.timestamp).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    </Text>
+                  </View>
+                  <View style={[styles.severityTag, { backgroundColor: c + '22' }]}>
+                    <Text style={[styles.severityText, { color: c }]}>{a.severity.toUpperCase()}</Text>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        )}
+
+        <TouchableOpacity
+          style={styles.viewAllAlertsBtn}
+          onPress={() => navigation.navigate('AllAlerts')}
+          activeOpacity={0.8}
+        >
+          <Icon name="bell" size={14} color={colors.primary} />
+          <Text style={styles.viewAllAlertsBtnText}>View All Alerts</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </View>
   );
 }
 
@@ -390,4 +502,25 @@ const styles = StyleSheet.create({
   viewAllAlertsBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: colors.card, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: 12 },
   viewAllAlertsBtnText: { color: colors.primary, fontSize: 13, fontWeight: '600' },
   flex1: { flex: 1 },
+  // ── Connection toast ─────────────────────────────────────────
+  connectionToast: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    zIndex: 999,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  connectionToastText: { flex: 1 },
+  connectionToastTitle: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  connectionToastSub: { color: 'rgba(255,255,255,0.8)', fontSize: 11, marginTop: 2 },
 });

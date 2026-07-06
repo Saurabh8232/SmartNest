@@ -487,6 +487,22 @@ export function subscribeToConnection(
   return () => { removeConnect(); removeDisconnect(); removeError(); };
 }
 
+// ── Device Connection Status (device:connection) ──────────────────
+// The backend emits this event immediately on subscribe (current state) and
+// again only when the device transitions between online and offline.
+// Payload mirrors the backend spec: deviceId, online, lastSeen (ISO or null).
+export interface DeviceConnectionPayload {
+  deviceId: string;
+  online: boolean;
+  lastSeen: string | null;
+}
+
+export function subscribeToDeviceConnection(
+  callback: (payload: DeviceConnectionPayload) => void,
+): Unsubscribe {
+  return socketManager.on<DeviceConnectionPayload>(SOCKET_EVENTS.deviceConnection, callback);
+}
+
 // ── REST Commands — Main Board ───────────────────────────────────
 export async function controlMainRelay(relayId: string, action: 'on' | 'off'): Promise<{ cmd_id?: string }> {
   const relayNo = parseInt(relayId.replace('r', ''), 10);

@@ -11,4 +11,5 @@ export const SOCKET_EVENTS = {
   deviceStatus:  'device:status',
   deviceSlaves:  'device:slaves',
   commandAck:    'command:ack',
+  deviceConnection: 'device:connection',
 } as const;
