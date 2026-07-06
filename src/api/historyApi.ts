@@ -17,7 +17,14 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     });
 
     if (!response.ok) {
-      const error = new Error(`REST request failed with status ${response.status}`);
+      let detail = '';
+      try {
+        const json = await response.json();
+        if (typeof json?.error === 'string') detail = `: ${json.error}`;
+        else if (typeof json?.message === 'string') detail = `: ${json.message}`;
+      } catch {}
+
+      const error = new Error(`History request failed with HTTP ${response.status}${detail}`);
       (error as Error & { status?: number }).status = response.status;
       throw error;
     }
@@ -49,9 +56,22 @@ interface EnergyHistoryResponse {
   };
 }
 
+function normalizeRecord(record: EnergyRecord): EnergyRecord {
+  return {
+    ...record,
+    date: typeof record.date === 'string'
+      ? record.date.replace(' ', 'T')
+      : record.date,
+    totalEnergyKwh: Number(record.totalEnergyKwh) || 0,
+    mainEnergyKwh: Number(record.mainEnergyKwh) || 0,
+    digitalEnergyKwh: Number(record.digitalEnergyKwh) || 0,
+    acEnergyKwh: Number(record.acEnergyKwh) || 0,
+  };
+}
+
 function normalizeHistoryResponse(res: EnergyHistoryResponse, fallbackFilter: string): HistoryData {
   const payload = res.data ?? res;
-  const records = Array.isArray(payload.records) ? payload.records : [];
+  const records = Array.isArray(payload.records) ? payload.records.map(normalizeRecord) : [];
 
   return {
     filter: payload.filter ?? fallbackFilter,
@@ -64,20 +84,27 @@ export async function getHistory(period: string): Promise<HistoryData> {
   const filter = toBackendFilter(period);
   const deviceId = await getDeviceId();
   const encodedDeviceId = encodeURIComponent(deviceId);
+  const paths = [
+    // Matches the backend guide route written as /api/history/energy:deviceId.
+    `/api/history/energy${encodedDeviceId}?deviceId=${encodedDeviceId}&filter=${filter}`,
+    `/api/history/energy/${encodedDeviceId}?filter=${filter}`,
+    `/api/history/energy?deviceId=${encodedDeviceId}&filter=${filter}`,
+  ];
+  let lastError: unknown = null;
 
-  try {
-    const res = await request<EnergyHistoryResponse>(
-      `/api/history/energy/${encodedDeviceId}?filter=${filter}`,
-    );
-    return normalizeHistoryResponse(res, filter);
-  } catch (error) {
-    if ((error as Error & { status?: number }).status !== 404) throw error;
+  for (const path of paths) {
+    try {
+      const res = await request<EnergyHistoryResponse>(path);
+      return normalizeHistoryResponse(res, filter);
+    } catch (error) {
+      lastError = error;
+      if ((error as Error & { status?: number }).status !== 404) throw error;
+    }
   }
 
-  const res = await request<EnergyHistoryResponse>(
-    `/api/history/energy?deviceId=${encodedDeviceId}&filter=${filter}`,
-  );
-  return normalizeHistoryResponse(res, filter);
+  throw lastError instanceof Error
+    ? lastError
+    : new Error('History endpoint was not found.');
 }
 
 // Reads DEVICE_ID from config. Imported here to keep historyApi self-contained.

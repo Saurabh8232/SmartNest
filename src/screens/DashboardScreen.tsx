@@ -56,6 +56,10 @@ export default function DashboardScreen() {
   const [currentHistory, setCurrentHistory] = useState<TimeSeriesPoint[]>([]);
   const hasLiveDashboardDataRef = useRef(false);
 
+  const commandErrorMessage = useCallback((error: unknown, fallback: string) => (
+    error instanceof Error ? error.message : fallback
+  ), []);
+
   // ── Load cached data on app start ─────────────────────────────
   useEffect(() => {
     AsyncStorage.getItem(CACHE_KEY).then(raw => {
@@ -132,8 +136,8 @@ export default function DashboardScreen() {
         {
           text: 'Master Unlock',
           onPress: () => {
-            masterUnlockAll().catch(() => {
-              Alert.alert('Command Failed', 'Unable to unlock all relays.');
+            masterUnlockAll().catch(error => {
+              Alert.alert('Command Failed', commandErrorMessage(error, 'Unable to unlock all relays.'));
             });
           },
         },
@@ -152,8 +156,8 @@ export default function DashboardScreen() {
           text: 'Master Shutdown',
           style: 'destructive',
           onPress: () => {
-            masterShutdownAll(false).catch(() => {
-              Alert.alert('Command Failed', 'Unable to shut down all relays.');
+            masterShutdownAll(false).catch(error => {
+              Alert.alert('Command Failed', commandErrorMessage(error, 'Unable to shut down all relays.'));
             });
           },
         },

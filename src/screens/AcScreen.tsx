@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Feather';
@@ -42,6 +42,10 @@ const MIN_TEMP = 16;
 const MAX_TEMP = 30;
 
 const paramCardStyle = (color: string) => [styles.paramCard, { borderTopColor: color + '99', borderTopWidth: 2 }];
+
+function commandErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
+}
 
 function TemperatureDial({ temperature, isOn }: { temperature: number; isOn: boolean }) {
   const SIZE = 200;
@@ -145,7 +149,11 @@ export default function AcScreen() {
       AsyncStorage.setItem(CACHE_KEY, JSON.stringify(next)).catch(() => {});
       return next;
     });
-    if (!offline) sendAcCommand(action, value);
+    if (!offline) {
+      sendAcCommand(action, value).catch(error => {
+        Alert.alert('Command Failed', commandErrorMessage(error, 'Unable to send the AC command.'));
+      });
+    }
   }, [offline]);
 
   // AC-specific electrical readings — all from hardware /live/sensors PZEM fields

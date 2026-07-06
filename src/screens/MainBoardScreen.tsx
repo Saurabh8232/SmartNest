@@ -31,6 +31,10 @@ const DEFAULT_DATA: MainBoardStatus = {
   relays: [],
 };
 
+function commandErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
+}
+
 export default function MainBoardScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
@@ -130,12 +134,12 @@ export default function MainBoardScreen() {
           });
         }
       })
-      .catch(() => {
+      .catch(error => {
         setData(prev => ({
           ...prev,
           relays: previousRelays,
         }));
-        Alert.alert('Command Failed', 'Unable to update the relay state.');
+        Alert.alert('Command Failed', commandErrorMessage(error, 'Unable to update the relay state.'));
       });
   }, [data.relays, offline]);
 
@@ -168,12 +172,12 @@ export default function MainBoardScreen() {
                   });
                 }
               })
-              .catch(() => {
+              .catch(error => {
                 setData(prev => ({
                   ...prev,
                   relays: previousRelays,
                 }));
-                Alert.alert('Command Failed', 'Unable to update the relay lock.');
+                Alert.alert('Command Failed', commandErrorMessage(error, 'Unable to update the relay lock.'));
               });
           },
         },
@@ -200,8 +204,8 @@ export default function MainBoardScreen() {
                   pendingCommandsRef.current.set(result.cmd_id, {});
                 }
               })
-              .catch(() => {
-                Alert.alert('Command Failed', 'Unable to send the reboot command.');
+              .catch(error => {
+                Alert.alert('Command Failed', commandErrorMessage(error, 'Unable to send the reboot command.'));
               });
           },
         },
@@ -231,12 +235,12 @@ export default function MainBoardScreen() {
           });
         }
       })
-      .catch(() => {
+      .catch(error => {
         setData(prev => ({
           ...prev,
           relays: previousRelays,
         }));
-        Alert.alert('Command Failed', 'Unable to update the lighting group.');
+        Alert.alert('Command Failed', commandErrorMessage(error, 'Unable to update the lighting group.'));
       });
   }, [data.relays, offline]);
 

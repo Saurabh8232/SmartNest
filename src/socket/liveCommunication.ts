@@ -46,7 +46,15 @@ async function apiPost(path: string, body?: object): Promise<{ cmd_id?: string }
     headers: { 'Content-Type': 'application/json' },
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  if (!res.ok) {
+    let detail = '';
+    try {
+      const json = await res.json();
+      if (typeof json?.error === 'string') detail = `: ${json.error}`;
+      else if (typeof json?.message === 'string') detail = `: ${json.message}`;
+    } catch {}
+    throw new Error(`Command request failed with HTTP ${res.status}${detail}`);
+  }
   return res.json();
 }
 

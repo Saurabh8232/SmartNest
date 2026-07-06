@@ -48,6 +48,14 @@ function periodLabel(p: Period) {
   return 'Last 30 days';
 }
 
+function formatRecordTime(date: string) {
+  const parsed = new Date(date);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+  return date.slice(11, 16) || '--:--';
+}
+
 // ── Screen ────────────────────────────────────────────────────────────────────
 export default function HistoryScreen() {
   const insets = useSafeAreaInsets();
@@ -60,16 +68,27 @@ export default function HistoryScreen() {
   const [data, setData]       = useState<HistoryData>(DEFAULT_DATA);
   const [offline, setOffline] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [errorText, setErrorText] = useState('');
+  const requestIdRef = useRef(0);
 
   const load = useCallback(async () => {
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
+
     try {
       setOffline(false);
+      setErrorText('');
       setLoading(true);
-      setData(await getHistory(period));
-    } catch {
+      const nextData = await getHistory(period);
+      if (requestIdRef.current !== requestId) return;
+      setData(nextData);
+    } catch (error) {
+      if (requestIdRef.current !== requestId) return;
       setOffline(true);
       setData(DEFAULT_DATA);
+      setErrorText(error instanceof Error ? error.message : 'Unable to load history.');
     } finally {
+      if (requestIdRef.current !== requestId) return;
       setLoading(false);
     }
   }, [period]);
@@ -178,7 +197,7 @@ export default function HistoryScreen() {
         <View style={styles.emptyCard}>
           <Icon name={offline ? 'wifi-off' : 'clock'} size={42} color={colors.mutedForeground} />
           <Text style={styles.emptyTitle}>{offline ? 'Not Connected' : 'Loading...'}</Text>
-          {offline && <Text style={styles.emptyDesc}>Check your device connection and BASE_URL in config.</Text>}
+          {offline && <Text style={styles.emptyDesc}>{errorText || 'Check your backend connection and login session.'}</Text>}
         </View>
 
       ) : !hasData ? (
@@ -224,7 +243,7 @@ export default function HistoryScreen() {
                   <View key={r.recordId} style={styles.recCard}>
                     <View style={[styles.recDot, { backgroundColor: colors.success }]} />
                     <Text style={styles.recTime}>
-                      {new Date(r.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {formatRecordTime(r.date)}
                     </Text>
                     <Text style={[styles.recVal, { color: colors.success }]}>
                       {Number(r.totalEnergyKwh).toFixed(3)} kWh

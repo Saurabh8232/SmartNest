@@ -4,6 +4,7 @@ import {
   loadStoredSession,
   login as loginToBackend,
   logout as logoutFromBackend,
+  subscribeToSession,
 } from './authService';
 
 export interface UserProfile {
@@ -35,6 +36,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const unsubscribe = subscribeToSession((session: AuthSession | null) => {
+      setUser(session ? { username: session.username, isDemo: session.isDemo } : null);
+    });
+
     loadStoredSession().then((session: AuthSession | null) => {
       if (session) {
         setUser({ username: session.username, isDemo: session.isDemo });
@@ -44,6 +49,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(null);
       setLoading(false);
     });
+
+    return unsubscribe;
   }, []);
 
   const login = useCallback(async (credentials: LoginCredentials) => {

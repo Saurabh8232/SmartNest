@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { REST_BASE_URL } from '../config/communication';
 
 const STORAGE_KEY = '@smartnest_auth_session';
+const REQUEST_TIMEOUT_MS = 12000;
 
 export interface AuthSession {
   username: string;
@@ -46,9 +47,24 @@ function buildDemoSession(username: string): AuthSession {
 async function parseResponseMessage(response: Response): Promise<string | null> {
   try {
     const json = await response.json();
+    if (typeof json?.error === 'string') return json.error;
     if (typeof json?.message === 'string') return json.message;
   } catch {}
   return null;
+}
+
+async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+  const requestInput = input instanceof URL ? input.toString() : input;
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error('Request timed out')), REQUEST_TIMEOUT_MS);
+  });
+
+  try {
+    return await Promise.race([fetch(requestInput, init), timeout]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
 }
 
 export async function loadStoredSession(): Promise<AuthSession | null> {
@@ -96,7 +112,7 @@ export function getAccessToken(): string | null {
 
 export async function login(credentials: LoginCredentials): Promise<AuthSession> {
   try {
-    const response = await fetch(`${REST_BASE_URL}/api/auth/login`, {
+    const response = await fetchWithTimeout(`${REST_BASE_URL}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(credentials),
@@ -151,7 +167,7 @@ export async function refreshAccessToken(): Promise<AuthSession | null> {
   }
 
   try {
-    const response = await fetch(`${REST_BASE_URL}/api/auth/refresh`, {
+    const response = await fetchWithTimeout(`${REST_BASE_URL}/api/auth/refresh`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refreshToken: currentSession.refreshToken }),
@@ -202,7 +218,7 @@ export async function logout(): Promise<void> {
   const session = currentSession;
   if (session && !session.isDemo && session.refreshToken) {
     try {
-      await fetch(`${REST_BASE_URL}/api/auth/logout`, {
+      await fetchWithTimeout(`${REST_BASE_URL}/api/auth/logout`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -225,7 +241,7 @@ export async function authFetch(input: RequestInfo | URL, init: RequestInit = {}
   }
 
   const requestInput = input instanceof URL ? input.toString() : input;
-  const makeRequest = (headers: Headers) => fetch(requestInput, { ...init, headers });
+  const makeRequest = (headers: Headers) => fetchWithTimeout(requestInput, { ...init, headers });
   let response = await makeRequest(baseHeaders);
 
   if (response.status !== 401 || !session?.refreshToken || session.isDemo) {

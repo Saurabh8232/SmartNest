@@ -29,6 +29,10 @@ const DEFAULT_DATA: DigitalBoardStatus = {
 
 const paramCardStyle = (color: string) => [styles.paramCard, { borderTopColor: color + '99', borderTopWidth: 2 }];
 
+function commandErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
+}
+
 export default function DigitalBoardScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
@@ -145,10 +149,11 @@ export default function DigitalBoardScreen() {
       if (!cmdId) {
         setCommandPending(false);
       }
-    } catch {
+    } catch (error) {
       onFailure();
       setCommandPending(false);
       pendingCommandIdRef.current = null;
+      Alert.alert('Command Failed', commandErrorMessage(error, 'Unable to send the command.'));
     }
   }, [commandPending, offline]);
 
