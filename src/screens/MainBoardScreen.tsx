@@ -41,8 +41,10 @@ export default function MainBoardScreen() {
   const [data, setData] = useState<MainBoardStatus>(DEFAULT_DATA);
   const [offline, setOffline] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [commandPending, setCommandPending] = useState(false);
   const hasLiveDataRef = useRef(false);
-  const pendingCommandsRef = useRef(new Map<string, { rollback?: () => void }>());
+  const pendingCommandIdRef = useRef<string | null>(null);
+  const pendingRollbackRef = useRef<(() => void) | null>(null);
 
   // ── Load cached data on app start ──────────────────────────────
   useEffect(() => {
@@ -71,14 +73,17 @@ export default function MainBoardScreen() {
       () => { setOffline(true); setRefreshing(false); },
     );
     const removeAck = subscribeToCommandAck((ack: CommandAck) => {
-      const pending = pendingCommandsRef.current.get(ack.cmd_id);
-      if (!pending) return;
+      if (ack.cmd_id !== pendingCommandIdRef.current) return;
 
-      pendingCommandsRef.current.delete(ack.cmd_id);
+      const rollback = pendingRollbackRef.current;
+      pendingCommandIdRef.current = null;
+      pendingRollbackRef.current = null;
+      setCommandPending(false);
 
       if (!ack.ok) {
-        pending.rollback?.();
+        rollback?.();
         Alert.alert('Command Failed', ack.message || 'The command was rejected by the backend.');
+        load();
       }
     });
     const removeShutdownAll = subscribeToShutdownAll(() => {
@@ -97,6 +102,9 @@ export default function MainBoardScreen() {
         return next;
       });
       setRefreshing(false);
+      setCommandPending(false);
+      pendingCommandIdRef.current = null;
+      pendingRollbackRef.current = null;
     });
     const removeUnlockAll = subscribeToUnlockAll(() => {
       setData(prev => {
@@ -112,38 +120,56 @@ export default function MainBoardScreen() {
         return next;
       });
       setRefreshing(false);
+      setCommandPending(false);
+      pendingCommandIdRef.current = null;
+      pendingRollbackRef.current = null;
     });
     return () => { removeBoard(); removeConnection(); removeAck(); removeShutdownAll(); removeUnlockAll(); };
   }, [load]);
 
+  const runCommand = useCallback(async (
+    execute: () => Promise<{ cmd_id?: string }>,
+    rollback?: () => void,
+  ) => {
+    if (offline || commandPending) return;
+
+    try {
+      const result = await execute();
+      const cmdId = result.cmd_id ?? null;
+      if (cmdId) {
+        pendingCommandIdRef.current = cmdId;
+        pendingRollbackRef.current = rollback ?? null;
+        setCommandPending(true);
+      } else {
+        setCommandPending(false);
+      }
+    } catch (error) {
+      rollback?.();
+      setCommandPending(false);
+      pendingCommandIdRef.current = null;
+      pendingRollbackRef.current = null;
+      Alert.alert('Command Failed', commandErrorMessage(error, 'Unable to send the command.'));
+    }
+  }, [commandPending, offline]);
+
   const handleToggle = useCallback((id: string, action: 'on' | 'off') => {
+    if (offline || commandPending) return;
     const previousRelays = data.relays.map(relay => ({ ...relay }));
     setData(prev => ({
       ...prev,
       relays: prev.relays.map(r => r.id === id ? { ...r, isOn: action === 'on' } : r),
     }));
-    if (offline) return;
-    controlMainRelay(id, action)
-      .then(result => {
-        if (result.cmd_id) {
-          pendingCommandsRef.current.set(result.cmd_id, {
-            rollback: () => setData(prev => ({
-              ...prev,
-              relays: previousRelays,
-            })),
-          });
-        }
-      })
-      .catch(error => {
-        setData(prev => ({
-          ...prev,
-          relays: previousRelays,
-        }));
-        Alert.alert('Command Failed', commandErrorMessage(error, 'Unable to update the relay state.'));
-      });
-  }, [data.relays, offline]);
+    runCommand(
+      () => controlMainRelay(id, action),
+      () => setData(prev => ({
+        ...prev,
+        relays: previousRelays,
+      })),
+    );
+  }, [commandPending, data.relays, offline, runCommand]);
 
   const handleRelayLock = useCallback((id: string, currentLocked: boolean) => {
+    if (offline || commandPending) return;
     const next = !currentLocked;
     const previousRelays = data.relays.map(relay => ({ ...relay }));
     Alert.alert(
@@ -160,36 +186,25 @@ export default function MainBoardScreen() {
               ...prev,
               relays: prev.relays.map(r => r.id === id ? { ...r, locked: next } : r),
             }));
-            if (offline) return;
-            lockMainRelay(id, next)
-              .then(result => {
-                if (result.cmd_id) {
-                  pendingCommandsRef.current.set(result.cmd_id, {
-                    rollback: () => setData(prev => ({
-                      ...prev,
-                      relays: previousRelays,
-                    })),
-                  });
-                }
-              })
-              .catch(error => {
-                setData(prev => ({
-                  ...prev,
-                  relays: previousRelays,
-                }));
-                Alert.alert('Command Failed', commandErrorMessage(error, 'Unable to update the relay lock.'));
-              });
+            runCommand(
+              () => lockMainRelay(id, next),
+              () => setData(prev => ({
+                ...prev,
+                relays: previousRelays,
+              })),
+            );
           },
         },
       ],
     );
-  }, [data.relays, offline]);
+  }, [commandPending, data.relays, offline, runCommand]);
 
   const handleReboot = useCallback(() => {
     if (offline) {
       Alert.alert('System Offline', 'Connect to the backend before rebooting the system.');
       return;
     }
+    if (commandPending) return;
     Alert.alert(
       'Reboot System?',
       'The backend will send a reboot command to the hardware for the full system.',
@@ -198,22 +213,17 @@ export default function MainBoardScreen() {
         {
           text: 'Reboot',
           onPress: () => {
-            rebootSystem()
-              .then(result => {
-                if (result.cmd_id) {
-                  pendingCommandsRef.current.set(result.cmd_id, {});
-                }
-              })
-              .catch(error => {
-                Alert.alert('Command Failed', commandErrorMessage(error, 'Unable to send the reboot command.'));
-              });
+            runCommand(
+              () => rebootSystem(),
+            );
           },
         },
       ],
     );
-  }, [offline]);
+  }, [commandPending, offline, runCommand]);
 
   const handleLightingGroup = useCallback((action: 'on' | 'off') => {
+    if (offline || commandPending) return;
     const previousRelays = data.relays.map(relay => ({ ...relay }));
     setData(prev => ({
       ...prev,
@@ -223,26 +233,14 @@ export default function MainBoardScreen() {
           : relay,
       ),
     }));
-    if (offline) return;
-    controlMainLightingGroup(action)
-      .then(result => {
-        if (result.cmd_id) {
-          pendingCommandsRef.current.set(result.cmd_id, {
-            rollback: () => setData(prev => ({
-              ...prev,
-              relays: previousRelays,
-            })),
-          });
-        }
-      })
-      .catch(error => {
-        setData(prev => ({
-          ...prev,
-          relays: previousRelays,
-        }));
-        Alert.alert('Command Failed', commandErrorMessage(error, 'Unable to update the lighting group.'));
-      });
-  }, [data.relays, offline]);
+    runCommand(
+      () => controlMainLightingGroup(action),
+      () => setData(prev => ({
+        ...prev,
+        relays: previousRelays,
+      })),
+    );
+  }, [commandPending, data.relays, offline, runCommand]);
 
   return (
     <ScrollView
@@ -293,7 +291,8 @@ export default function MainBoardScreen() {
       <TouchableOpacity
         onPress={handleReboot}
         activeOpacity={0.85}
-        style={[styles.rebootBtn, offline && styles.disabledBtn]}
+        disabled={offline || commandPending}
+        style={[styles.rebootBtn, (offline || commandPending) && styles.disabledBtn]}
       >
         <View style={styles.rebootIcon}>
           <Icon name="rotate-cw" size={17} color={colors.warning} />
@@ -319,7 +318,8 @@ export default function MainBoardScreen() {
           <TouchableOpacity
             onPress={() => handleLightingGroup('on')}
             activeOpacity={0.85}
-            style={[styles.groupBtn, styles.groupBtnOn, offline && styles.disabledBtn]}
+            disabled={offline || commandPending}
+            style={[styles.groupBtn, styles.groupBtnOn, (offline || commandPending) && styles.disabledBtn]}
           >
             <Icon name="power" size={14} color={colors.background} />
             <Text style={styles.groupBtnOnText}>All ON</Text>
@@ -327,7 +327,8 @@ export default function MainBoardScreen() {
           <TouchableOpacity
             onPress={() => handleLightingGroup('off')}
             activeOpacity={0.85}
-            style={[styles.groupBtn, styles.groupBtnOff, offline && styles.disabledBtn]}
+            disabled={offline || commandPending}
+            style={[styles.groupBtn, styles.groupBtnOff, (offline || commandPending) && styles.disabledBtn]}
           >
             <Icon name="power" size={14} color={colors.mutedForeground} />
             <Text style={styles.groupBtnOffText}>All OFF</Text>
@@ -371,7 +372,8 @@ export default function MainBoardScreen() {
                 </View>
                 <TouchableOpacity
                   onPress={() => handleRelayLock(r.id, isLocked)}
-                  style={[styles.lockBtn, { backgroundColor: isLocked ? colors.warning + '22' : colors.secondary }]}
+                  disabled={offline || commandPending}
+                  style={[styles.lockBtn, { backgroundColor: isLocked ? colors.warning + '22' : colors.secondary }, (offline || commandPending) && styles.disabledBtn]}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
                   <Icon name={isLocked ? 'lock' : 'unlock'} size={14} color={isLocked ? colors.warning : colors.mutedForeground} />
@@ -379,13 +381,20 @@ export default function MainBoardScreen() {
                 <Switch
                   value={r.isOn}
                   onValueChange={next => handleToggle(r.id, next ? 'on' : 'off')}
-                  disabled={isLocked || r.status === 'offline'}
+                  disabled={isLocked || r.status === 'offline' || offline || commandPending}
                   trackColor={{ false: colors.border, true: colors.primary + '88' }}
                   thumbColor={r.isOn ? colors.primary : colors.mutedForeground}
                 />
               </View>
             );
           })}
+        </View>
+      )}
+
+      {commandPending && (
+        <View style={styles.pendingNote}>
+          <Icon name="clock" size={14} color={colors.primary} />
+          <Text style={styles.pendingNoteText}>Waiting for command acknowledgement...</Text>
         </View>
       )}
     </ScrollView>
@@ -438,5 +447,7 @@ const styles = StyleSheet.create({
   emptyCard: { alignItems: 'center', gap: 8, paddingVertical: 48, backgroundColor: colors.card, borderRadius: 16, borderWidth: 1, borderColor: colors.border },
   emptyTitle: { color: colors.foreground, fontSize: 16, fontWeight: '600' },
   emptyDesc: { color: colors.mutedForeground, fontSize: 13, textAlign: 'center' },
+  pendingNote: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.primary + '11', borderRadius: 10, padding: 12, borderWidth: 1, borderColor: colors.primary + '33' },
+  pendingNoteText: { flex: 1, color: colors.primary, fontSize: 12 },
   secondary: { backgroundColor: colors.secondary },
 });

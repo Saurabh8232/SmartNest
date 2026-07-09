@@ -2,7 +2,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   Alert,
-  Animated,
   RefreshControl, ScrollView, StyleSheet,
   Text, TouchableOpacity, View, useWindowDimensions,
 } from 'react-native';
@@ -12,11 +11,9 @@ import Icon from 'react-native-vector-icons/Feather';
 import {
   Alert as AlertType,
   DashboardData,
-  DeviceConnectionPayload,
   masterShutdownAll,
   masterUnlockAll,
   subscribeToConnection,
-  subscribeToDeviceConnection,
   subscribeToDashboard,
   subscribeToDashboardAlerts,
 } from '../socket/liveCommunication';
@@ -51,15 +48,6 @@ function severityIcon(s: string) {
   return 'info';
 }
 
-// ── Format lastSeen timestamp as human-readable relative time ─────
-function formatLastSeen(iso: string): string {
-  const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
-  if (diff < 60) return 'just now';
-  if (diff < 3600) return `${Math.floor(diff / 60)} min ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)} hr ago`;
-  return `${Math.floor(diff / 86400)} days ago`;
-}
-
 export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
@@ -72,12 +60,6 @@ export default function DashboardScreen() {
   const [powerHistory, setPowerHistory] = useState<TimeSeriesPoint[]>([]);
   const [currentHistory, setCurrentHistory] = useState<TimeSeriesPoint[]>([]);
   const hasLiveDashboardDataRef = useRef(false);
-
-  // ── Device connection toast ───────────────────────────────────
-  const [connectionToast, setConnectionToast] = useState<DeviceConnectionPayload | null>(null);
-  const toastAnim = useRef(new Animated.Value(0)).current;
-  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const prevOnlineRef = useRef<boolean | null>(null); // null = initial event not yet received
 
   const commandErrorMessage = useCallback((error: unknown, fallback: string) => (
     error instanceof Error ? error.message : fallback
@@ -159,48 +141,6 @@ export default function DashboardScreen() {
     };
   }, [load]);
 
-  // ── Subscribe to device:connection — show toast only on transitions ──
-  // First event after subscribe is the initial snapshot — silently stored,
-  // no popup. Only subsequent online ↔ offline flips trigger the toast.
-  useEffect(() => {
-    const remove = subscribeToDeviceConnection(payload => {
-      const wasNull = prevOnlineRef.current === null;
-      const changed = prevOnlineRef.current !== payload.online;
-
-      prevOnlineRef.current = payload.online;
-
-      // First event is the initial state snapshot — don't show popup
-      if (wasNull || !changed) return;
-
-      // Clear any existing auto-dismiss timer
-      if (toastTimerRef.current) {
-        clearTimeout(toastTimerRef.current);
-        toastTimerRef.current = null;
-      }
-
-      // Slide the toast in
-      setConnectionToast(payload);
-      Animated.timing(toastAnim, {
-        toValue: 1,
-        duration: 250,
-        useNativeDriver: true,
-      }).start();
-
-      // Auto-dismiss after 2 seconds
-      toastTimerRef.current = setTimeout(() => {
-        Animated.timing(toastAnim, {
-          toValue: 0,
-          duration: 200,
-          useNativeDriver: true,
-        }).start(() => setConnectionToast(null));
-      }, 2000);
-    });
-
-    return () => {
-      remove();
-      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    };
-  }, [toastAnim]);
 
   // ── Master Unlock All ────────────────────────────────────────
   const handleMasterUnlock = useCallback(() => {
@@ -267,46 +207,6 @@ export default function DashboardScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
 
-      {/* ── Floating device connection toast ─────────────────────── */}
-      {connectionToast && (
-        <Animated.View
-          style={[
-            styles.connectionToast,
-            {
-              top: insets.top + 12,
-              backgroundColor: connectionToast.online
-                ? colors.success + 'F0'
-                : colors.destructive + 'F0',
-              opacity: toastAnim,
-              transform: [{
-                translateY: toastAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [-60, 0],
-                }),
-              }],
-            },
-          ]}
-        >
-          <Icon
-            name={connectionToast.online ? 'wifi' : 'wifi-off'}
-            size={16}
-            color="#fff"
-          />
-          <View style={styles.connectionToastText}>
-            <Text style={styles.connectionToastTitle}>
-              {connectionToast.deviceId} is{' '}
-              <Text style={{ fontWeight: '900' }}>
-                {connectionToast.online ? 'Online' : 'Offline'}
-              </Text>
-            </Text>
-            {!connectionToast.online && connectionToast.lastSeen && (
-              <Text style={styles.connectionToastSub}>
-                Last seen {formatLastSeen(connectionToast.lastSeen)}
-              </Text>
-            )}
-          </View>
-        </Animated.View>
-      )}
 
       <ScrollView
         style={styles.scroll}
@@ -502,25 +402,4 @@ const styles = StyleSheet.create({
   viewAllAlertsBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: colors.card, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: 12 },
   viewAllAlertsBtnText: { color: colors.primary, fontSize: 13, fontWeight: '600' },
   flex1: { flex: 1 },
-  // ── Connection toast ─────────────────────────────────────────
-  connectionToast: {
-    position: 'absolute',
-    left: 16,
-    right: 16,
-    zIndex: 999,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 14,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 10,
-  },
-  connectionToastText: { flex: 1 },
-  connectionToastTitle: { color: '#fff', fontSize: 13, fontWeight: '700' },
-  connectionToastSub: { color: 'rgba(255,255,255,0.8)', fontSize: 11, marginTop: 2 },
 });

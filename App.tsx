@@ -1,9 +1,10 @@
-import React, { useEffect } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Animated, StyleSheet, Text, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
 
 import { AuthProvider, useAuth } from './src/authentication/AuthContext';
@@ -18,10 +19,109 @@ import HistoryScreen from './src/screens/HistoryScreen';
 import AccountScreen from './src/screens/AccountScreen';
 import colors from './src/constants/colors';
 import socketManager from './src/socket/SocketManager';
+import {
+  DeviceConnectionPayload,
+  subscribeToDeviceConnection,
+} from './src/socket/liveCommunication';
 
 const Tab = createBottomTabNavigator();
 const HomeStack = createNativeStackNavigator();
 const DevicesStack = createNativeStackNavigator();
+
+function formatLastSeen(iso: string): string {
+  const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (diff < 60) return 'just now';
+  if (diff < 3600) return `${Math.floor(diff / 60)} min ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)} hr ago`;
+  return `${Math.floor(diff / 86400)} days ago`;
+}
+
+function DeviceConnectionToast() {
+  const insets = useSafeAreaInsets();
+  const [connectionToast, setConnectionToast] = useState<DeviceConnectionPayload | null>(null);
+  const toastAnim = useRef(new Animated.Value(0)).current;
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevOnlineRef = useRef<boolean | null>(null);
+
+  useEffect(() => {
+    const remove = subscribeToDeviceConnection(payload => {
+      const wasInitialSnapshot = prevOnlineRef.current === null;
+      const changed = prevOnlineRef.current !== payload.online;
+
+      prevOnlineRef.current = payload.online;
+
+      if (wasInitialSnapshot || !changed) return;
+
+      if (toastTimerRef.current) {
+        clearTimeout(toastTimerRef.current);
+        toastTimerRef.current = null;
+      }
+
+      setConnectionToast(payload);
+      Animated.timing(toastAnim, {
+        toValue: 1,
+        duration: 250,
+        useNativeDriver: true,
+      }).start();
+
+      toastTimerRef.current = setTimeout(() => {
+        Animated.timing(toastAnim, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }).start(() => setConnectionToast(null));
+      }, 5000);
+    });
+
+    return () => {
+      remove();
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    };
+  }, [toastAnim]);
+
+  if (!connectionToast) return null;
+
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        styles.connectionToast,
+        {
+          top: insets.top + 12,
+          backgroundColor: connectionToast.online
+            ? colors.success + 'F0'
+            : colors.destructive + 'F0',
+          opacity: toastAnim,
+          transform: [{
+            translateY: toastAnim.interpolate({
+              inputRange: [0, 1],
+              outputRange: [-60, 0],
+            }),
+          }],
+        },
+      ]}
+    >
+      <Icon
+        name={connectionToast.online ? 'wifi' : 'wifi-off'}
+        size={16}
+        color="#fff"
+      />
+      <View style={styles.connectionToastText}>
+        <Text style={styles.connectionToastTitle}>
+          {connectionToast.deviceId} is{' '}
+          <Text style={styles.connectionToastStatus}>
+            {connectionToast.online ? 'Online' : 'Offline'}
+          </Text>
+        </Text>
+        {!connectionToast.online && connectionToast.lastSeen && (
+          <Text style={styles.connectionToastSub}>
+            Last seen {formatLastSeen(connectionToast.lastSeen)}
+          </Text>
+        )}
+      </View>
+    </Animated.View>
+  );
+}
 
 function HomeNavigator() {
   return (
@@ -50,33 +150,36 @@ function MainTabs() {
   }, []);
 
   return (
-    <Tab.Navigator
-      screenOptions={({ route }) => ({
-        headerShown: false,
-        tabBarStyle: {
-          backgroundColor: colors.card,
-          borderTopColor: colors.border,
-          borderTopWidth: 1,
-          elevation: 0,
-          height: 62,
-          paddingBottom: 4,
-        },
-        tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.mutedForeground,
-        tabBarLabelStyle: { fontSize: 10, fontWeight: '600', marginBottom: 4 },
-        tabBarIcon: ({ color, size }) => {
-          const icons: Record<string, string> = {
-            Home: 'home', Devices: 'cpu', History: 'bar-chart-2', Account: 'user',
-          };
-          return <Icon name={icons[route.name] ?? 'circle'} size={size - 2} color={color} />;
-        },
-      })}
-    >
-      <Tab.Screen name="Home" component={HomeNavigator} />
-      <Tab.Screen name="Devices" component={DevicesNavigator} />
-      <Tab.Screen name="History" component={HistoryScreen} />
-      <Tab.Screen name="Account" component={AccountScreen} />
-    </Tab.Navigator>
+    <View style={styles.tabsRoot}>
+      <Tab.Navigator
+        screenOptions={({ route }) => ({
+          headerShown: false,
+          tabBarStyle: {
+            backgroundColor: colors.card,
+            borderTopColor: colors.border,
+            borderTopWidth: 1,
+            elevation: 0,
+            height: 62,
+            paddingBottom: 4,
+          },
+          tabBarActiveTintColor: colors.primary,
+          tabBarInactiveTintColor: colors.mutedForeground,
+          tabBarLabelStyle: { fontSize: 10, fontWeight: '600', marginBottom: 4 },
+          tabBarIcon: ({ color, size }) => {
+            const icons: Record<string, string> = {
+              Home: 'home', Devices: 'cpu', History: 'bar-chart-2', Account: 'user',
+            };
+            return <Icon name={icons[route.name] ?? 'circle'} size={size - 2} color={color} />;
+          },
+        })}
+      >
+        <Tab.Screen name="Home" component={HomeNavigator} />
+        <Tab.Screen name="Devices" component={DevicesNavigator} />
+        <Tab.Screen name="History" component={HistoryScreen} />
+        <Tab.Screen name="Account" component={AccountScreen} />
+      </Tab.Navigator>
+      <DeviceConnectionToast />
+    </View>
   );
 }
 
@@ -127,3 +230,28 @@ export default function App() {
     </SafeAreaProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  tabsRoot: { flex: 1 },
+  connectionToast: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    zIndex: 999,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  connectionToastText: { flex: 1 },
+  connectionToastTitle: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  connectionToastStatus: { fontWeight: '900' },
+  connectionToastSub: { color: 'rgba(255,255,255,0.8)', fontSize: 11, marginTop: 2 },
+});
