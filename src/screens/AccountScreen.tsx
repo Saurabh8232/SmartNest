@@ -1,122 +1,225 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-  Alert, ScrollView, StyleSheet, Text,
+  Alert, Animated, Linking, ScrollView, StyleSheet, Text,
   TouchableOpacity, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
-// MQTT API calls disabled while MQTT UI is commented out
-// MQTT settings communication can be added as a dedicated API module when re-enabled.
 import { useAuth } from '../authentication/AuthContext';
 import colors from '../constants/colors';
 
-// interface MqttForm {
-//   enabled: boolean; broker: string; port: string; clientId: string;
-//   username: string; password: string; baseTopic: string; keepalive: string;
-// }
+// ── Team data ─────────────────────────────────────────────────────
+const TEAM = [
+  {
+    name: 'Ayush Sharma',
+    role: 'Project Lead',
+    initial: 'A',
+    color: colors.primary,
+    linkedin: 'https://www.linkedin.com/in/ayush-gupta-433633350/',
+    responsibilities: [
+      'Project Planning',
+      'System Architecture',
+      'Project Coordination',
+      'System Testing & Validation',
+    ],
+  },
+  {
+    name: 'Saurabh Yadav',
+    role: 'Mobile Application Developer',
+    initial: 'S',
+    color: colors.accent,
+    linkedin: 'https://www.linkedin.com/in/saurabh-yadav-b75486259/',
+    responsibilities: [
+      'Complete React Native App Development',
+      'UI/UX Design & Implementation',
+      'REST API Integration',
+      'Socket.IO Communication',
+      'Application Architecture',
+      'Real-Time Dashboard Development',
+    ],
+  },
+  {
+    name: 'Omji Dubey',
+    role: 'Backend Developer',
+    initial: 'O',
+    color: colors.success,
+    linkedin: 'https://www.linkedin.com/in/omjidubey',
+    responsibilities: [
+      'Backend Development',
+      'REST API Development',
+      'Database Integration',
+      'Server Communication',
+      'Backend Services',
+    ],
+  },
+  {
+    name: 'Arpit Gangwar',
+    role: 'Hardware Developer',
+    initial: 'A',
+    color: colors.warning,
+    linkedin: 'https://www.linkedin.com/in/arpit-gangwar/',
+    responsibilities: [
+      'ESP32 Development',
+      'Hardware Integration',
+      'Relay & Sensor Integration',
+      'Embedded Systems Development',
+      'Hardware Testing',
+    ],
+  },
+];
 
-// const DEFAULTS: MqttForm = {
-//   enabled: true, broker: 'broker.hivemq.com', port: '1883',
-//   clientId: 'SmartNest_001', username: '', password: '',
-//   baseTopic: 'smartnest', keepalive: '60',
-// };
+const TECH_STACK = [
+  'React Native', 'TypeScript', 'Node.js', 'Socket.IO',
+  'REST API', 'ESP32', 'MQTT', 'Android Studio', 'Git', 'GitHub',
+];
 
-// function Field({ label, value, onChangeText, placeholder, secureTextEntry, keyboardType }: {
-//   label: string; value: string; onChangeText: (v: string) => void;
-//   placeholder?: string; secureTextEntry?: boolean; keyboardType?: 'default' | 'numeric' | 'url';
-// }) {
-//   return (
-//     <View style={fStyles.wrap}>
-//       <Text style={fStyles.label}>{label}</Text>
-//       <TextInput
-//         style={fStyles.input}
-//         value={value}
-//         onChangeText={onChangeText}
-//         placeholder={placeholder ?? label}
-//         placeholderTextColor={colors.mutedForeground}
-//         secureTextEntry={secureTextEntry}
-//         keyboardType={keyboardType ?? 'default'}
-//         autoCapitalize="none"
-//         autoCorrect={false}
-//       />
-//     </View>
-//   );
-// }
+// ── Animated About section ────────────────────────────────────────
+function AboutSection() {
+  const headerAnim = useRef(new Animated.Value(0)).current;
+  const cardAnims  = useRef(TEAM.map(() => new Animated.Value(0))).current;
+  const chipsAnim  = useRef(new Animated.Value(0)).current;
 
-// const fStyles = StyleSheet.create({
-//   wrap: { gap: 5 },
-//   label: { color: colors.mutedForeground, fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
-//   input: { backgroundColor: colors.secondary, borderRadius: 10, borderWidth: 1, borderColor: colors.border, color: colors.foreground, fontSize: 14, paddingHorizontal: 13, paddingVertical: 11 },
-// });
+  useEffect(() => {
+    // 1. Fade in header
+    Animated.timing(headerAnim, {
+      toValue: 1, duration: 500, useNativeDriver: true,
+    }).start();
 
-// export default function AccountScreen() {
-//   const insets = useSafeAreaInsets();
-//   const logRef = useRef<ScrollView>(null);
+    // 2. Cards slide up one by one
+    const cardSequence = cardAnims.map((anim, i) =>
+      Animated.timing(anim, {
+        toValue: 1, duration: 400, delay: 200 + i * 120, useNativeDriver: true,
+      }),
+    );
+    Animated.parallel(cardSequence).start();
 
-//   const [mqtt, setMqtt] = useState<MqttForm>(DEFAULTS);
-//   const [logs, setLogs] = useState<string[]>(['Ready. Press Load MQTT to fetch current settings.']);
-//   const [loading, setLoading] = useState(false);
+    // 3. Chips fade in after cards
+    Animated.timing(chipsAnim, {
+      toValue: 1, duration: 400, delay: 800, useNativeDriver: true,
+    }).start();
+  }, [cardAnims, chipsAnim, headerAnim]);
 
-//   const addLog = useCallback((msg: string) => {
-//     const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-//     setLogs(prev => [...prev, `[${time}] ${msg}`]);
-//     setTimeout(() => logRef.current?.scrollToEnd({ animated: true }), 100);
-//   }, []);
+  return (
+    <>
+      {/* ── Hero ──────────────────────────────────────────────── */}
+      <Animated.View
+        style={[
+          about.heroCard,
+          {
+            opacity: headerAnim,
+            transform: [{ translateY: headerAnim.interpolate({ inputRange: [0, 1], outputRange: [-16, 0] }) }],
+          },
+        ]}
+      >
+        <View style={about.logoWrap}>
+          <Icon name="home" size={28} color={colors.primary} />
+        </View>
+        <Text style={about.heroTitle}>SmartNest</Text>
+        <Text style={about.heroTagline}>Smart Home Automation &{'\n'}Energy Monitoring System</Text>
+        <View style={about.versionBadge}>
+          <Text style={about.versionText}>Version 1.0.0 Beta</Text>
+        </View>
+        <Text style={about.heroDesc}>
+          SmartNest is an IoT-based Smart Home Automation and Energy Monitoring platform designed
+          to provide real-time monitoring, intelligent device control, and historical energy
+          analytics using ESP32, REST APIs, and Socket.IO communication.
+        </Text>
+      </Animated.View>
 
-//   const set = (key: keyof MqttForm) => (val: string | boolean) =>
-//     setMqtt(prev => ({ ...prev, [key]: val }));
+      {/* ── Project Team ──────────────────────────────────────── */}
+      <Text style={about.sectionLabel}>PROJECT TEAM</Text>
 
-//   const handleLoad = useCallback(async () => {
-//     setLoading(true);
-//     addLog('Loading MQTT settings from device...');
-//     try {
-//       const s = await getMqttSettings();
-//       setMqtt({ enabled: s.enabled, broker: s.broker, port: String(s.port), clientId: s.clientId, username: s.username ?? '', password: s.password ?? '', baseTopic: s.baseTopic, keepalive: String(s.keepalive) });
-//       addLog('✓ MQTT settings loaded successfully.');
-//     } catch {
-//       addLog('✗ Backend not reachable — showing local defaults.');
-//     } finally { setLoading(false); }
-//   }, [addLog]);
+      {TEAM.map((member, i) => (
+        <Animated.View
+          key={member.name}
+          style={[
+            about.memberCard,
+            {
+              opacity: cardAnims[i],
+              transform: [{ translateY: cardAnims[i].interpolate({ inputRange: [0, 1], outputRange: [24, 0] }) }],
+            },
+          ]}
+        >
+          {/* Avatar */}
+          <View style={about.memberTop}>
+            <View
+              style={[
+                about.avatar,
+                {
+                  borderColor: member.color,
+                  backgroundColor: member.color + '22',
+                },
+              ]}
+            >
+              <Text style={[about.avatarInitial, { color: member.color }]}>
+                {member.initial}
+              </Text>
+            </View>
+            <View style={about.memberInfo}>
+              <Text style={about.memberName}>{member.name}</Text>
+              <Text style={[about.memberRole, { color: member.color }]}>{member.role}</Text>
+            </View>
+          </View>
 
-//   const handleSave = useCallback(async () => {
-//     if (!mqtt.broker.trim()) { addLog('✗ Broker address cannot be empty.'); return; }
-//     const port = parseInt(mqtt.port, 10);
-//     if (isNaN(port) || port < 1 || port > 65535) { addLog('✗ Port must be 1–65535.'); return; }
-//     const keepalive = parseInt(mqtt.keepalive, 10);
-//     if (isNaN(keepalive) || keepalive < 1) { addLog('✗ Keepalive must be positive.'); return; }
-//     setLoading(true);
-//     addLog(`Saving — Broker: ${mqtt.broker}:${mqtt.port}, Topic: ${mqtt.baseTopic}`);
-//     try {
-//       const res = await saveMqttSettings({ enabled: mqtt.enabled, broker: mqtt.broker.trim(), port, clientId: mqtt.clientId.trim(), username: mqtt.username.trim(), password: mqtt.password, baseTopic: mqtt.baseTopic.trim(), keepalive } as any);
-//       addLog(`✓ ${res.message ?? 'Settings saved. Device will reconnect.'}`);
-//     } catch {
-//       addLog('✗ Save failed — backend not reachable.');
-//     } finally { setLoading(false); }
-//   }, [mqtt, addLog]);
+          {/* Responsibilities */}
+          <View style={about.respList}>
+            {member.responsibilities.map(r => (
+              <View key={r} style={about.respRow}>
+                <View style={[about.respDot, { backgroundColor: member.color }]} />
+                <Text style={about.respText}>{r}</Text>
+              </View>
+            ))}
+          </View>
 
-//   const handleReset = useCallback(() => {
-//     Alert.alert('Reset MQTT Settings', 'Reset all MQTT config to factory defaults?', [
-//       { text: 'Cancel', style: 'cancel' },
-//       { text: 'Reset', style: 'destructive', onPress: async () => {
-//         setLoading(true);
-//         addLog('Resetting MQTT configuration...');
-//         try {
-//           const res = await resetMqttSettings();
-//           setMqtt(DEFAULTS);
-//           addLog(`✓ ${res.message ?? 'MQTT reset to defaults.'}`);
-//         } catch {
-//           setMqtt(DEFAULTS);
-//           addLog('✗ Backend not reachable — form reset locally.');
-//           addLog('  Serial Monitor: MQTT RESET');
-//         } finally { setLoading(false); }
-//       }},
-//     ]);
-//   }, [addLog]);
+          {/* LinkedIn */}
+          <TouchableOpacity
+            style={[about.linkedinBtn, { borderColor: member.color + '55' }]}
+            onPress={() => Linking.openURL(member.linkedin)}
+            activeOpacity={0.75}
+          >
+            <Icon name="linkedin" size={14} color={member.color} />
+            <Text style={[about.linkedinText, { color: member.color }]}>LinkedIn</Text>
+          </TouchableOpacity>
+        </Animated.View>
+      ))}
 
+      {/* ── Technology Stack ──────────────────────────────────── */}
+      <Animated.View style={{ opacity: chipsAnim }}>
+        <Text style={about.sectionLabel}>TECHNOLOGY STACK</Text>
+        <View style={about.chipsWrap}>
+          {TECH_STACK.map(tech => (
+            <View key={tech} style={about.chip}>
+              <Text style={about.chipText}>{tech}</Text>
+            </View>
+          ))}
+        </View>
+      </Animated.View>
 
+      {/* ── Organization ──────────────────────────────────────── */}
+      <Animated.View style={[about.orgCard, { opacity: chipsAnim }]}>
+        <Icon name="book-open" size={18} color={colors.accent} />
+        <View style={about.orgInfo}>
+          <Text style={about.orgName}>Invertis University</Text>
+          <Text style={about.orgDept}>Department of Computer Science & Engineering</Text>
+          <Text style={about.orgLocation}>Bareilly, Uttar Pradesh</Text>
+        </View>
+      </Animated.View>
+
+      {/* ── Footer ────────────────────────────────────────────── */}
+      <View style={about.footer}>
+        <Text style={about.footerText}>Version 1.0.0 Beta</Text>
+        <Text style={about.footerText}>© 2026 SmartNest Team</Text>
+        <Text style={about.footerText}>All Rights Reserved.</Text>
+      </View>
+    </>
+  );
+}
+
+// ── Main Screen ───────────────────────────────────────────────────
 export default function AccountScreen() {
   const insets = useSafeAreaInsets();
-  const { user , logout } = useAuth();
+  const { user, logout } = useAuth();
+  const [showAbout, setShowAbout] = useState(false);
 
   return (
     <ScrollView
@@ -133,12 +236,12 @@ export default function AccountScreen() {
       {/* Profile card */}
       <View style={styles.profileCard}>
         <View style={styles.avatarWrap}>
-         <Text style={styles.avatarInitial}>
+          <Text style={styles.avatarInitial}>
             {user?.username ? user.username.charAt(0).toUpperCase() : '?'}
           </Text>
         </View>
         <View style={styles.flex1}>
-         <Text style={styles.profileName}>{user?.username ?? 'Unknown User'}</Text>
+          <Text style={styles.profileName}>{user?.username ?? 'Unknown User'}</Text>
           <Text style={styles.profileDesc}>{user?.isDemo ? 'Demo session' : 'Authenticated session'}</Text>
         </View>
         <View style={styles.onlineBadge}>
@@ -168,115 +271,289 @@ export default function AccountScreen() {
         ))}
       </View>
 
-      {/* MQTT UI is commented out in source; no placeholder shown here */}
-
-      {/* ── B. About ── */}
+      {/* About */}
       <Text style={styles.sectionTitle}>B. ABOUT</Text>
       <View style={styles.menuGroup}>
-        {[
-          { icon: 'info',      label: 'About SmartNest',     val: 'v1.0.0', onPress: () => Alert.alert('SmartNest', 'SmartNest IoT Control v1.0.0\nReact Native · MQTT · ESP32\n\nGitHub: MakeWithArpit/SmartNest') },
-          { icon: 'link',      label: 'Connectivity Details', val: '',       onPress: () => Alert.alert('Connectivity', 'MQTT Broker: broker.hivemq.com:1883\nBase Topic: smartnest\nProtocol: MQTT v3.1.1\n\nSee SmartNest_Communication_Contract.md for full documentation.') },
-        ].map((item, i) => (
-          <TouchableOpacity key={item.label} style={[styles.menuItem, i > 0 && styles.menuBorder]} onPress={item.onPress} activeOpacity={0.7}>
-            <View style={[styles.menuIcon, styles.menuIconMuted]}>
-              <Icon name={item.icon} size={14} color={colors.mutedForeground} />
-            </View>
-            <Text style={styles.menuLabel}>{item.label}</Text>
-            <View style={styles.menuRight}>
-              {item.val ? <Text style={styles.menuVal}>{item.val}</Text> : null}
-              <Icon name="chevron-right" size={14} color={colors.mutedForeground} />
-            </View>
-          </TouchableOpacity>
-        ))}
+        <TouchableOpacity
+          style={styles.menuItem}
+          onPress={() => setShowAbout(prev => !prev)}
+          activeOpacity={0.7}
+        >
+          <View style={[styles.menuIcon, styles.menuIconMuted]}>
+            <Icon name="info" size={14} color={colors.mutedForeground} />
+          </View>
+          <Text style={styles.menuLabel}>About SmartNest</Text>
+          <View style={styles.menuRight}>
+            <Text style={styles.menuVal}>v1.0.0</Text>
+            <Icon name={showAbout ? "chevron-up" : "chevron-down"} size={14} color={colors.mutedForeground} />
+          </View>
+        </TouchableOpacity>
       </View>
+      {showAbout && <AboutSection />}
 
       {/* Sign Out */}
       <TouchableOpacity
         style={styles.signOutBtn}
         activeOpacity={0.8}
-        onPress={() => Alert.alert('Sign Out', 'Are you sure you want to sign out?.', 
-        [{ text: 'Cancel', style: 'cancel' }, { text: 'Sign Out', style: 'destructive', onPress: logout }])}
+        onPress={() => Alert.alert('Sign Out', 'Are you sure you want to sign out?.',
+          [{ text: 'Cancel', style: 'cancel' }, { text: 'Sign Out', style: 'destructive', onPress: logout }])}
       >
         <Icon name="log-out" size={15} color={colors.destructive} />
         <Text style={styles.signOutText}>Sign Out</Text>
       </TouchableOpacity>
-
-      <Text style={styles.version}>SmartNest IoT Control · v1.0.0</Text>
     </ScrollView>
   );
 }
 
+// ── Styles ────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  scroll: { flex: 1, backgroundColor: colors.background },
-  content: { paddingHorizontal: 16, gap: 10 },
+  scroll:       { flex: 1, backgroundColor: colors.background },
+  content:      { paddingHorizontal: 16, gap: 10 },
 
-  header: { marginBottom: 2 },
-  title: { color: colors.foreground, fontSize: 26, fontWeight: '800', letterSpacing: -0.5 },
-  subtitle: { color: colors.mutedForeground, fontSize: 12, marginTop: 3 },
+  header:       { marginBottom: 2 },
+  title:        { color: colors.foreground, fontSize: 26, fontWeight: '800', letterSpacing: -0.5 },
+  subtitle:     { color: colors.mutedForeground, fontSize: 12, marginTop: 3 },
 
-  profileCard: { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: colors.card, borderRadius: 16, borderWidth: 1, borderColor: colors.border, padding: 16 },
-avatarWrap: { width: 52, height: 52, borderRadius: 14, backgroundColor: colors.primary + '22', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.primary + '44' },
-avatarInitial: { color: colors.primary, fontSize: 22, fontWeight: '800' },
-  profileName: { color: colors.foreground, fontSize: 15, fontWeight: '700' },
-  profileDesc: { color: colors.mutedForeground, fontSize: 12, marginTop: 2 },
-  onlineBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: colors.success + '22', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: colors.success + '44' },
-  bDot: { width: 7, height: 7, borderRadius: 3.5 },
-  bText: { fontSize: 11, fontWeight: '700' },
+  profileCard:  { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: colors.card, borderRadius: 16, borderWidth: 1, borderColor: colors.border, padding: 16 },
+  avatarWrap:   { width: 52, height: 52, borderRadius: 14, backgroundColor: colors.primary + '22', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.primary + '44' },
+  avatarInitial:{ color: colors.primary, fontSize: 22, fontWeight: '800' },
+  profileName:  { color: colors.foreground, fontSize: 15, fontWeight: '700' },
+  profileDesc:  { color: colors.mutedForeground, fontSize: 12, marginTop: 2 },
+  onlineBadge:  { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: colors.success + '22', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: colors.success + '44' },
+  bDot:         { width: 7, height: 7, borderRadius: 3.5 },
+  bText:        { fontSize: 11, fontWeight: '700' },
 
   sectionTitle: { color: colors.mutedForeground, fontSize: 10, fontWeight: '700', letterSpacing: 1.5, marginTop: 4 },
 
-  menuGroup: { backgroundColor: colors.card, borderRadius: 16, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' },
-  menuItem: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 14 },
-  menuBorder: { borderTopWidth: 1, borderTopColor: colors.border },
-  menuIcon: { width: 32, height: 32, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
-  menuLabel: { flex: 1, color: colors.foreground, fontSize: 14 },
-  menuRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  menuVal: { color: colors.mutedForeground, fontSize: 13 },
+  menuGroup:    { backgroundColor: colors.card, borderRadius: 16, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' },
+  menuItem:     { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 14 },
+  menuBorder:   { borderTopWidth: 1, borderTopColor: colors.border },
+  menuIcon:     { width: 32, height: 32, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  menuLabel:    { flex: 1, color: colors.foreground, fontSize: 14 },
+  menuRight:    { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  menuVal:      { color: colors.mutedForeground, fontSize: 13 },
 
-  // MQTT
-  mqttCard: { backgroundColor: colors.card, borderRadius: 18, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' },
-  enableRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16 },
-  enableLabel: { color: colors.foreground, fontSize: 14, fontWeight: '600' },
-  enableDesc: { color: colors.mutedForeground, fontSize: 12, marginTop: 2 },
-  hr: { height: 1, backgroundColor: colors.border, marginHorizontal: 16 },
-  fieldsGrid: { padding: 16, gap: 12, flexDirection: 'row', flexWrap: 'wrap' },
-  fieldFull: { width: '100%' },
-  fieldHalf: { width: '47.5%' },
-  actionRow: { flexDirection: 'row', gap: 8, padding: 16, paddingTop: 12 },
-  actionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 13, borderRadius: 12, borderWidth: 1 },
-  actionBtnText: { fontSize: 11, fontWeight: '700' },
-  terminal: { margin: 16, marginTop: 0, backgroundColor: '#060d1a', borderRadius: 12, borderWidth: 1, borderColor: colors.border + '88', overflow: 'hidden' },
-  terminalHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border + '66' },
-  termDots: { flexDirection: 'row', gap: 5, marginRight: 10 },
-  termDot: { width: 10, height: 10, borderRadius: 5 },
-  termTitle: { flex: 1, color: colors.mutedForeground, fontSize: 12, fontWeight: '600' },
-  termScroll: { maxHeight: 150, padding: 12 },
-  termLine: { color: '#7ec8e3', fontSize: 12, fontFamily: 'monospace', lineHeight: 20 },
+  menuIconPrimary:   { backgroundColor: colors.primary + '20' },
+  menuIconMuted:     { backgroundColor: colors.mutedForeground + '22' },
 
-  flex1: { flex: 1 },
+  signOutBtn:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: colors.destructive + '15', borderRadius: 16, borderWidth: 1, borderColor: colors.destructive + '40', paddingVertical: 15, marginTop: 4 },
+  signOutText:  { color: colors.destructive, fontSize: 15, fontWeight: '700' },
 
-  menuIconPrimary: { backgroundColor: colors.primary + '20' },
-  menuIconMuted: { backgroundColor: colors.mutedForeground + '22' },
+  flex1:        { flex: 1 },
+});
 
-  actionBtnSecondary: { backgroundColor: colors.secondary, borderColor: colors.border },
-  actionBtnPrimary: { backgroundColor: colors.primary, borderColor: colors.primary },
-  actionBtnDestructive: { backgroundColor: colors.destructive, borderColor: colors.destructive },
-  actionBtnTextPrimary: { color: colors.primary },
-  actionBtnTextOnPrimary: { color: colors.background },
-  actionBtnTextWhite: { color: '#fff' },
+// ── About section styles ──────────────────────────────────────────
+const about = StyleSheet.create({
+  // Hero card
+  heroCard: {
+    backgroundColor: colors.card,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 20,
+    alignItems: 'center',
+    gap: 10,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  logoWrap: {
+    width: 60,
+    height: 60,
+    borderRadius: 18,
+    backgroundColor: colors.primary + '18',
+    borderWidth: 1,
+    borderColor: colors.primary + '44',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 2,
+  },
+  heroTitle: {
+    color: colors.foreground,
+    fontSize: 26,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+  },
+  heroTagline: {
+    color: colors.mutedForeground,
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  versionBadge: {
+    backgroundColor: colors.accent + '22',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.accent + '55',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+  },
+  versionText: {
+    color: colors.accent,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  heroDesc: {
+    color: colors.mutedForeground,
+    fontSize: 12,
+    textAlign: 'center',
+    lineHeight: 19,
+    marginTop: 4,
+  },
 
-  termDotRed: { backgroundColor: '#ff5f56' },
-  termDotYellow: { backgroundColor: '#ffbd2e' },
-  termDotGreen: { backgroundColor: '#27c93f' },
+  // Section label
+  sectionLabel: {
+    color: colors.mutedForeground,
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1.5,
+    marginTop: 6,
+  },
 
-  iconBtnSmall: { padding: 4 },
+  // Member cards
+  memberCard: {
+    backgroundColor: colors.card,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 16,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  memberTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  avatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+  },
+  avatarInitial: {
+    fontSize: 20,
+    fontWeight: '800',
+  },
+  memberInfo: {
+    flex: 1,
+    gap: 3,
+  },
+  memberName: {
+    color: colors.foreground,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  memberRole: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
 
-  termLineSuccess: { color: colors.success },
-  termLineError: { color: colors.destructive },
-  termLineNote: { color: colors.mutedForeground, fontSize: 11 },
+  // Responsibilities
+  respList: {
+    gap: 6,
+  },
+  respRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  respDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+  },
+  respText: {
+    color: colors.mutedForeground,
+    fontSize: 12,
+    flex: 1,
+  },
 
+  // LinkedIn button
+  linkedinBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 9,
+    borderRadius: 10,
+    borderWidth: 1,
+    backgroundColor: 'transparent',
+  },
+  linkedinText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
 
-  signOutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: colors.destructive + '15', borderRadius: 16, borderWidth: 1, borderColor: colors.destructive + '40', paddingVertical: 15, marginTop: 4 },
-  signOutText: { color: colors.destructive, fontSize: 15, fontWeight: '700' },
-  version: { color: colors.mutedForeground, fontSize: 11, textAlign: 'center', paddingBottom: 4 },
+  // Tech stack chips
+  chipsWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 4,
+  },
+  chip: {
+    backgroundColor: colors.secondary,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  chipText: {
+    color: colors.foreground,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+
+  // Organization card
+  orgCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.accent + '44',
+    padding: 16,
+    marginTop: 4,
+  },
+  orgInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  orgName: {
+    color: colors.foreground,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  orgDept: {
+    color: colors.mutedForeground,
+    fontSize: 12,
+    marginTop: 1,
+  },
+  orgLocation: {
+    color: colors.mutedForeground,
+    fontSize: 11,
+    marginTop: 1,
+  },
+
+  // Footer
+  footer: {
+    alignItems: 'center',
+    gap: 3,
+    paddingVertical: 8,
+  },
+  footerText: {
+    color: colors.mutedForeground,
+    fontSize: 11,
+  },
 });
