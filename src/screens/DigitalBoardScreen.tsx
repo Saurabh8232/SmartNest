@@ -43,6 +43,7 @@ export default function DigitalBoardScreen() {
   const [commandPending, setCommandPending] = useState(false);
   const hasLiveBoardDataRef = useRef(false);
   const pendingCommandIdRef = useRef<string | null>(null);
+  const pendingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     AsyncStorage.getItem(CACHE_KEY).then(raw => {
@@ -74,6 +75,7 @@ export default function DigitalBoardScreen() {
     const removeAck = subscribeToCommandAck((ack: CommandAck) => {
       if (ack.cmd_id !== pendingCommandIdRef.current) return;
       pendingCommandIdRef.current = null;
+      if (pendingTimeoutRef.current) { clearTimeout(pendingTimeoutRef.current); pendingTimeoutRef.current = null; }
       setCommandPending(false);
 
       if (!ack.ok) {
@@ -144,12 +146,18 @@ export default function DigitalBoardScreen() {
       if (cmdId) {
         pendingCommandIdRef.current = cmdId;
         setCommandPending(true);
+        pendingTimeoutRef.current = setTimeout(() => {
+          pendingCommandIdRef.current = null;
+          pendingTimeoutRef.current = null;
+          setCommandPending(false);
+        }, 10000);
       }
       onSuccess(cmdId);
       if (!cmdId) {
         setCommandPending(false);
       }
     } catch (error) {
+      if (pendingTimeoutRef.current) { clearTimeout(pendingTimeoutRef.current); pendingTimeoutRef.current = null; }
       onFailure();
       setCommandPending(false);
       pendingCommandIdRef.current = null;

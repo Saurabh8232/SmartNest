@@ -45,6 +45,7 @@ export default function MainBoardScreen() {
   const hasLiveDataRef = useRef(false);
   const pendingCommandIdRef = useRef<string | null>(null);
   const pendingRollbackRef = useRef<(() => void) | null>(null);
+  const pendingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Load cached data on app start ──────────────────────────────
   useEffect(() => {
@@ -78,6 +79,7 @@ export default function MainBoardScreen() {
       const rollback = pendingRollbackRef.current;
       pendingCommandIdRef.current = null;
       pendingRollbackRef.current = null;
+      if (pendingTimeoutRef.current) { clearTimeout(pendingTimeoutRef.current); pendingTimeoutRef.current = null; }
       setCommandPending(false);
 
       if (!ack.ok) {
@@ -102,6 +104,7 @@ export default function MainBoardScreen() {
         return next;
       });
       setRefreshing(false);
+      if (pendingTimeoutRef.current) { clearTimeout(pendingTimeoutRef.current); pendingTimeoutRef.current = null; }
       setCommandPending(false);
       pendingCommandIdRef.current = null;
       pendingRollbackRef.current = null;
@@ -120,6 +123,7 @@ export default function MainBoardScreen() {
         return next;
       });
       setRefreshing(false);
+      if (pendingTimeoutRef.current) { clearTimeout(pendingTimeoutRef.current); pendingTimeoutRef.current = null; }
       setCommandPending(false);
       pendingCommandIdRef.current = null;
       pendingRollbackRef.current = null;
@@ -140,10 +144,18 @@ export default function MainBoardScreen() {
         pendingCommandIdRef.current = cmdId;
         pendingRollbackRef.current = rollback ?? null;
         setCommandPending(true);
+        pendingTimeoutRef.current = setTimeout(() => {
+          pendingCommandIdRef.current = null;
+          pendingRollbackRef.current = null;
+          pendingTimeoutRef.current = null;
+          rollback?.();
+          setCommandPending(false);
+        }, 10000);
       } else {
         setCommandPending(false);
       }
     } catch (error) {
+      if (pendingTimeoutRef.current) { clearTimeout(pendingTimeoutRef.current); pendingTimeoutRef.current = null; }
       rollback?.();
       setCommandPending(false);
       pendingCommandIdRef.current = null;
