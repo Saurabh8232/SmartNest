@@ -26,7 +26,7 @@ import {
 type Unsubscribe = () => void;
 const DEVICE_API_PATH = `/api/devices/${DEVICE_ID}`;
 
-// ── Relay name maps (backend sends numbers only, names are local) ─
+// Backend relay payloads use numbers; names are local labels.
 const MAIN_RELAY_NAMES: Record<number, string> = {
   1: 'Light 1',
   2: 'Light 2',
@@ -46,7 +46,6 @@ subscribeToSession(session => {
 
 socketManager.setAuthToken(getAccessToken());
 
-// ── REST helper ──────────────────────────────────────────────────
 async function apiPost(path: string, body?: object): Promise<{ cmd_id?: string }> {
   const fetchOpts: RequestInit = {
     method: 'POST',
@@ -57,13 +56,10 @@ async function apiPost(path: string, body?: object): Promise<{ cmd_id?: string }
   let res = await authFetch(`${REST_BASE_URL}${path}`, fetchOpts);
 
   if (!res.ok) {
-    // FIX (Issue 1): This backend returns 404 (not 401) for expired or invalid
-    // tokens to hide route existence. It also returns 401 for demo/missing tokens.
-    // Handle both the same way: attempt a manual refresh + retry before giving up.
+    // Backend can return 404 for stale tokens; refresh once before failing.
     if (res.status === 404 || res.status === 401) {
       const session = getCurrentSession();
 
-      // Demo session or no token at all — cannot recover, must log in for real.
       if (!session?.accessToken || session.isDemo) {
         clearSession().catch(() => {});
         throw new Error(
@@ -71,7 +67,6 @@ async function apiPost(path: string, body?: object): Promise<{ cmd_id?: string }
         );
       }
 
-      // Real session with a refresh token — try to get a new access token and retry.
       if (session.refreshToken) {
         const refreshed = await refreshAccessToken();
         if (refreshed?.accessToken) {
@@ -80,7 +75,6 @@ async function apiPost(path: string, body?: object): Promise<{ cmd_id?: string }
         }
       }
 
-      // Refresh failed or retry still rejected — session is fully stale.
       clearSession().catch(() => {});
       throw new Error(
         'Your session has expired. Please log out and log in again to send commands.',
@@ -98,12 +92,7 @@ async function apiPost(path: string, body?: object): Promise<{ cmd_id?: string }
   return res.json();
 }
 
-// ── REST snapshot (initial hydration before live socket data arrives) ────
-// The backend only pushes device:relays / device:sensors over the socket when
-// real MQTT data changes — it does NOT send a snapshot on `subscribe`. Without
-// this, screens stay blank until the hardware happens to report an update.
-// Note: GET /api/devices/:id/relays returns a DIFFERENT shape than the socket
-// event (arrays, not `items`), so we normalize it here.
+// REST snapshot fills initial state before socket updates.
 interface RestRelaysResponse {
   success: boolean;
   data: {
@@ -129,16 +118,12 @@ function normalizeRestRelays(data: RestRelaysResponse['data']): RelaysPayload {
   };
 }
 
-// FIX (Issue 3 — Performance): Deduplicate fetchInitialRelays so that multiple
-// screens subscribing at the same time (subscribeToDashboard, subscribeToMainBoard,
-// subscribeToDigitalBoard) only issue a SINGLE network request rather than three.
+// Share the initial relays request across subscribers.
 let _relaysFetchPromise: Promise<RelaysPayload | null> | null = null;
 
 async function fetchInitialRelays(): Promise<RelaysPayload | null> {
-  // If we already have live relay data, skip the REST fetch entirely.
   if (latestRelays) return latestRelays;
 
-  // If a fetch is already in-flight, share its promise with all callers.
   if (_relaysFetchPromise) return _relaysFetchPromise;
 
   _relaysFetchPromise = (async () => {
@@ -149,12 +134,10 @@ async function fetchInitialRelays(): Promise<RelaysPayload | null> {
       if (!json?.data) return null;
       return normalizeRestRelays(json.data);
     } catch {
-      // Offline or backend unreachable — the socket will populate state once it connects.
       return null;
     }
   })();
 
-  // Clear the shared promise after it settles so a later retry can re-fetch if needed.
   _relaysFetchPromise.finally(() => {
     _relaysFetchPromise = null;
   });
@@ -162,7 +145,6 @@ async function fetchInitialRelays(): Promise<RelaysPayload | null> {
   return _relaysFetchPromise;
 }
 
-// ── In-memory state (combines events for DashboardData) ──────────
 let latestSensors: SensorsPayload | null = null;
 let latestRelays: RelaysPayload | null = null;
 let latestStatus: StatusPayload | null = null;
@@ -172,20 +154,7 @@ const unlockAllListeners = new Set<() => void>();
 
 const dashboardListeners = new Set<(d: DashboardData) => void>();
 
-// ── Staleness watchdog ─────────────────────────────────────────────
-// The backend only pushes device:* socket events when it actually receives an
-// MQTT message. Several MQTT topics (live/status, live/relays, live/slaves)
-// are published with `retain: true`, so a broker can replay an OLD cached
-// message the moment the backend reconnects — even if the physical device is
-// offline. That replayed message looks identical to a fresh one (same shape,
-// same "online" booleans), so without tracking *when we actually last heard
-// something*, the UI can show "online" with frozen/stale data indefinitely.
-//
-// Fix: track the wall-clock time of the last real socket event we received
-// (of any live-data type) and treat the device as stale if nothing has
-// arrived within STALE_THRESHOLD_MS. The firmware heartbeats live/sensors
-// (retain: false, so it can NEVER be replayed) roughly every 30s, so 3x that
-// gives headroom for normal jitter while still catching a truly dead device.
+// Retained MQTT messages can look fresh; require recent live events.
 const STALE_THRESHOLD_MS = 90_000; // 3x the ~30s firmware heartbeat interval
 let lastLiveUpdateAt: number | null = null;
 
@@ -198,16 +167,13 @@ function isLiveDataStale(): boolean {
   return Date.now() - lastLiveUpdateAt > STALE_THRESHOLD_MS;
 }
 
-// Track live-data arrival globally (independent of which screens are mounted)
-// so staleness is detected even if the dashboard listener isn't active.
+// Track live data even when dashboard is not mounted.
 socketManager.on<SensorsPayload>(SOCKET_EVENTS.deviceSensors, markLiveUpdate);
 socketManager.on<RelaysPayload>(SOCKET_EVENTS.deviceRelays, markLiveUpdate);
 socketManager.on<StatusPayload>(SOCKET_EVENTS.deviceStatus, markLiveUpdate);
 socketManager.on<SlavesPayload>(SOCKET_EVENTS.deviceSlaves, markLiveUpdate);
 
-// Periodically re-evaluate staleness even when no new socket event arrives —
-// a silent/dead device produces NO events at all, so without this timer the
-// UI would keep showing the last-known "online" state forever.
+// Recompute stale status while the device is silent.
 setInterval(() => {
   if (dashboardListeners.size === 0) return;
   notifyDashboardListeners();
@@ -227,12 +193,7 @@ function buildDashboard(): DashboardData | null {
     latestSensors.energy.digitalKwh +
     latestSensors.energy.acKwh;
 
-  // systemOnline: derived from device:slaves (authoritative for PZEM/Digital connectivity).
-  // Falls back to whether we have received any status heartbeat at all.
-  // A device-reported "online" flag can be lying if it came from a retained
-  // MQTT replay rather than a fresh message, so it is gated by our own
-  // staleness watchdog: if nothing real has arrived in a while, we always
-  // report offline regardless of what the last payload claimed.
+  // Gate reported online status with the staleness watchdog.
   const reportedOnline = latestSlaves
     ? latestSlaves.pzem.online
     : latestStatus !== null;
@@ -257,9 +218,7 @@ function buildDashboard(): DashboardData | null {
   };
 }
 
-// FIX (Issue 3 — Performance): Batch rapid socket events so that multiple events
-// arriving within the same JS tick (sensors + relays + status at once) only trigger
-// ONE dashboard rebuild + listener notification instead of one per event.
+// Batch socket bursts into one dashboard notification.
 let _dashboardNotifyScheduled = false;
 
 function notifyDashboardListeners(): void {
@@ -273,7 +232,6 @@ function notifyDashboardListeners(): void {
   }, 0);
 }
 
-// ── Raw event subscriptions ──────────────────────────────────────
 export function subscribeToSensors(listener: (s: SensorsPayload) => void): Unsubscribe {
   return socketManager.on<SensorsPayload>(SOCKET_EVENTS.deviceSensors, listener);
 }
@@ -294,7 +252,6 @@ export function subscribeToCommandAck(listener: (ack: CommandAck) => void): Unsu
   return socketManager.on<CommandAck>(SOCKET_EVENTS.commandAck, listener);
 }
 
-// ── Dashboard (composed from sensors + relays + status + slaves) ─
 export function subscribeToDashboard(listener: (data: DashboardData) => void): Unsubscribe {
   dashboardListeners.add(listener);
 
@@ -335,9 +292,8 @@ export function subscribeToDashboard(listener: (data: DashboardData) => void): U
   };
 }
 
-// ── Dashboard Alerts (stub — no backend event documented) ────────
 export function subscribeToDashboardAlerts(listener: (alerts: Alert[]) => void): Unsubscribe {
-  // No backend socket event currently documents this. Listener will never fire.
+  // Placeholder until backend event is documented.
   return socketManager.on<Alert[]>('dashboard-alerts:update', listener);
 }
 
@@ -347,13 +303,11 @@ export function subscribeToAlerts(listener: (alerts: Alert[]) => void): Unsubscr
 
 export function resolveAlert(_alertId: string): void {}
 
-// ── Devices (stub — no backend socket event documented) ──────────
 export function subscribeToDevices(listener: (devices: IoTDevice[]) => void): Unsubscribe {
-  // No backend socket event currently documents this. Listener will never fire.
+  // Placeholder until backend event is documented.
   return socketManager.on<IoTDevice[]>('devices:update', listener);
 }
 
-// ── Main Board ───────────────────────────────────────────────────
 export function subscribeToMainBoard(listener: (status: MainBoardStatus) => void): Unsubscribe {
   let latestRelaysLocal: RelaysPayload | null = latestRelays;
   let latestSensorsLocal: SensorsPayload | null = latestSensors;
@@ -407,7 +361,6 @@ export function subscribeToUnlockAll(listener: () => void): Unsubscribe {
   return () => { unlockAllListeners.delete(listener); };
 }
 
-// ── Digital Board ────────────────────────────────────────────────
 export function subscribeToDigitalBoard(listener: (status: DigitalBoardStatus) => void): Unsubscribe {
   let latestRelaysLocal: RelaysPayload | null = latestRelays;
   let latestSensorsLocal: SensorsPayload | null = latestSensors;
@@ -453,9 +406,7 @@ export function subscribeToDigitalBoard(listener: (status: DigitalBoardStatus) =
   return () => { removeRelays(); removeSensors(); };
 }
 
-// ── AC ───────────────────────────────────────────────────────────
-// AC state (power, temperature, fan) is not broadcast via socket.
-// We track what was last sent locally and infer power from current.ac > 0.
+// AC state is inferred from local commands and live sensor current.
 let _acTemp = 24;
 let _acFan: AcStatus['fanSpeed'] = 'auto';
 let _acSwing = false;
@@ -476,7 +427,6 @@ export function subscribeToAc(listener: (status: AcStatus) => void): Unsubscribe
   });
 }
 
-// ── Connection ───────────────────────────────────────────────────
 export function subscribeToConnection(
   onConnect: () => void,
   onDisconnect: () => void,
@@ -487,7 +437,6 @@ export function subscribeToConnection(
   return () => { removeConnect(); removeDisconnect(); removeError(); };
 }
 
-// ── Device Connection Status (device:connection) ──────────────────
 // The backend emits this event immediately on subscribe (current state) and
 // again only when the device transitions between online and offline.
 // Payload mirrors the backend spec: deviceId, online, lastSeen (ISO or null).
@@ -503,7 +452,6 @@ export function subscribeToDeviceConnection(
   return socketManager.on<DeviceConnectionPayload>(SOCKET_EVENTS.deviceConnection, callback);
 }
 
-// ── REST Commands — Main Board ───────────────────────────────────
 export async function controlMainRelay(relayId: string, action: 'on' | 'off'): Promise<{ cmd_id?: string }> {
   const relayNo = parseInt(relayId.replace('r', ''), 10);
   return apiPost(`${DEVICE_API_PATH}/relays/${relayNo}`, { state: action === 'on' });
@@ -526,7 +474,6 @@ export async function rebootMainBoard(): Promise<{ cmd_id?: string }> {
   return apiPost(`${DEVICE_API_PATH}/system/reboot`);
 }
 
-// ── REST Commands — Digital Board ────────────────────────────────
 export async function controlDigitalRelay(_relayId: string, action: 'on' | 'off'): Promise<{ cmd_id?: string }> {
   return apiPost(`${DEVICE_API_PATH}/relays/7`, { state: action === 'on' });
 }
@@ -535,7 +482,6 @@ export async function lockDigitalRelay(_relayId: string, locked: boolean): Promi
   return apiPost(`${DEVICE_API_PATH}/relays/7/lock`, { locked });
 }
 
-// ── REST Commands — Global ────────────────────────────────────────
 export async function masterUnlockAll(): Promise<{ cmd_id?: string }> {
   const result = await apiPost(`${DEVICE_API_PATH}/relays/unlock`);
   unlockAllListeners.forEach(listener => listener());
@@ -557,7 +503,6 @@ export async function rebootSystem(): Promise<{ cmd_id?: string }> {
   return apiPost(`${DEVICE_API_PATH}/system/reboot`);
 }
 
-// ── REST Commands — AC ────────────────────────────────────────────
 export async function sendAcCommand(action: string, value?: unknown): Promise<void> {
   if (action === 'power_on') {
     await apiPost(`${DEVICE_API_PATH}/ac`, { power: true });
@@ -578,7 +523,6 @@ export async function sendAcCommand(action: string, value?: unknown): Promise<vo
   }
 }
 
-// ── Re-exports for screens that import types from here ───────────
 export type {
   AcStatus,
   Alert,

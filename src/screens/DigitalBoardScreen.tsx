@@ -269,7 +269,6 @@ export default function DigitalBoardScreen() {
         />
       }
     >
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Icon name="arrow-left" size={18} color={colors.primary} />
@@ -286,7 +285,6 @@ export default function DigitalBoardScreen() {
         )}
       </View>
 
-      {/* Board Electrical Parameters */}
       <Text style={styles.sectionTitle}>ELECTRICAL PARAMETERS</Text>
       <View style={styles.paramsGrid}>
         {params.map(p => (
@@ -301,7 +299,6 @@ export default function DigitalBoardScreen() {
         ))}
       </View>
 
-      {/* Reboot Button */}
       <TouchableOpacity
         onPress={handleReboot}
         activeOpacity={0.85}
@@ -316,7 +313,6 @@ export default function DigitalBoardScreen() {
         </View>
       </TouchableOpacity>
 
-      {/* Relay Control */}
       <Text style={styles.sectionTitle}>RELAY CONTROL</Text>
 
       {relay === null ? (

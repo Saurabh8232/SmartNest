@@ -19,10 +19,10 @@ import {
 } from '../socket/liveCommunication';
 import { TimeSeriesPoint } from '../types/communication';
 import { REST_BASE_URL } from '../config/communication';
+
 // FIX (Issue 3 — Performance): Use authFetch so that the /dashboard trend
-// request includes the Authorization header. Previously plain fetch() was used,
-// which omitted the auth header and would fail on a backend that requires JWT
-// for all endpoints.
+
+
 import { authFetch } from '../authentication/authService';
 import MiniChart from '../components/MiniChart';
 import colors from '../constants/colors';
@@ -83,6 +83,7 @@ export default function DashboardScreen() {
   // FIX (Issue 3 — Performance): Use authFetch instead of plain fetch() so
   // that the Authorization header is included, matching the requirement that
   // all device endpoints require a valid JWT.
+
   const fetchTrends = useCallback(async () => {
     try {
       const res = await authFetch(`${REST_BASE_URL}/dashboard`);
@@ -105,7 +106,9 @@ export default function DashboardScreen() {
     const removeDashboard = subscribeToDashboard(dash => {
       hasLiveDashboardDataRef.current = true;
       setData(dash);
-      // live graphs are updated in real-time, but we only keep the last 60 points to avoid memory bloat
+
+      // Keep live chart buffers bounded.
+
        setPowerHistory(prev =>
     [...prev, { timestamp: dash.lastUpdated, value: dash.power }].slice(-60)
   );
@@ -114,10 +117,9 @@ export default function DashboardScreen() {
   );
       setOffline(false);
       setRefreshing(false);
-      // if (dash.powerHistory?.length)   setPowerHistory(dash.powerHistory);
-      // if (dash.currentHistory?.length) setCurrentHistory(dash.currentHistory);
 
       // ── Save to cache for next app restart ──────────────────
+
       AsyncStorage.setItem(CACHE_KEY, JSON.stringify({
         data: dash,
         powerHistory: dash.powerHistory ?? [],
@@ -143,6 +145,7 @@ export default function DashboardScreen() {
 
 
   // ── Master Unlock All ────────────────────────────────────────
+
   const handleMasterUnlock = useCallback(() => {
     Alert.alert(
       'Master Unlock?',
@@ -162,6 +165,7 @@ export default function DashboardScreen() {
   }, [commandErrorMessage]);
 
   // ── Master Shutdown (one-shot) ───────────────────────────────
+
   const handleMasterShutdown = useCallback(() => {
     Alert.alert(
       'Master Shutdown?',

@@ -2,11 +2,6 @@ import { REST_BASE_URL } from '../config/communication';
 import { authFetch } from '../authentication/authService';
 import { EnergyRecord, HistoryData } from '../types/communication';
 
-// FIX (Issue 2 — History freeze): Accept an external AbortSignal so that
-// HistoryScreen can cancel an in-flight request when the user changes the
-// period filter. Without this, switching filters leaves the old (slow) request
-// running in parallel with the new one, holding the JS thread's promise chain
-// busy for up to 8 seconds per attempt.
 async function request<T>(
   path: string,
   options?: RequestInit,
@@ -15,8 +10,7 @@ async function request<T>(
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 8000);
 
-  // Link the external cancellation signal to the internal controller so that
-  // when the caller aborts (e.g. filter changed), this fetch is also cancelled.
+  // Let callers cancel stale history requests.
   if (externalSignal) {
     if (externalSignal.aborted) {
       clearTimeout(timeoutId);
@@ -55,11 +49,10 @@ async function request<T>(
   }
 }
 
-// Map UI period keys to the values the backend accepts
 type BackendFilter = 'today' | '7d' | '30d' | 'custom';
 
 function toBackendFilter(period: string): BackendFilter {
-  if (period === 'last7days'  || period === '7d')  return '7d';
+  if (period === 'last7days' || period === '7d') return '7d';
   if (period === 'last30days' || period === '30d') return '30d';
   return 'today';
 }
@@ -100,18 +93,12 @@ function normalizeHistoryResponse(res: EnergyHistoryResponse, fallbackFilter: st
   };
 }
 
-// FIX (Issue 2 — History freeze): Accept an external AbortSignal forwarded from
-// HistoryScreen so that changing the period filter cancels the previous request
-// immediately instead of letting it time out after 8 seconds.
 export async function getHistory(period: string, signal?: AbortSignal): Promise<HistoryData> {
   const filter = toBackendFilter(period);
   const deviceId = await getDeviceId();
   const encodedDeviceId = encodeURIComponent(deviceId);
 
-  // Per the backend README, the history endpoint is:
-  //   GET /api/history/energy:deviceId?deviceId=<id>&filter=<filter>
-  // (note: no slash between "energy" and the deviceId — that is the backend route format).
-  // Paths 2 and 3 are fallbacks for backends that use a different route structure.
+  // Try the documented route first, then common backend route variants.
   const paths = [
     `/api/history/energy${encodedDeviceId}?deviceId=${encodedDeviceId}&filter=${filter}`,
     `/api/history/energy/${encodedDeviceId}?filter=${filter}`,
@@ -125,10 +112,7 @@ export async function getHistory(period: string, signal?: AbortSignal): Promise<
       return normalizeHistoryResponse(res, filter);
     } catch (error) {
       lastError = error;
-      // If the request was cancelled by the caller (filter changed), propagate
-      // immediately — do not retry the remaining paths.
       if ((error as Error).name === 'AbortError') throw error;
-      // Only retry the next path on 404 (route not found); all other errors are final.
       if ((error as Error & { status?: number }).status !== 404) throw error;
     }
   }
@@ -138,7 +122,6 @@ export async function getHistory(period: string, signal?: AbortSignal): Promise<
     : new Error('History endpoint was not found.');
 }
 
-// Reads DEVICE_ID from config. Imported here to keep historyApi self-contained.
 async function getDeviceId(): Promise<string> {
   const { DEVICE_ID } = await import('../config/communication');
   return DEVICE_ID;

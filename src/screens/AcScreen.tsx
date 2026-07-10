@@ -16,7 +16,7 @@ import colors from '../constants/colors';
 const CACHE_KEY = '@smartnest_ac_v1';
 
 // Mode selector removed — hardware firmware does not support mode changes via MQTT
-// fan keys match hardware ac_set fan values exactly: auto | min | low | med | high | max
+// Firmware-supported fan values.
 const FAN_SPEEDS = [
   { key: 'min',  label: 'Min'  },
   { key: 'low',  label: 'Low'  },
@@ -103,7 +103,6 @@ export default function AcScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const hasLiveDataRef = useRef(false);
 
-  // ── Load cached data on app start ──────────────────────────────
   useEffect(() => {
     AsyncStorage.getItem(CACHE_KEY).then(raw => {
       if (!raw) return;
@@ -124,7 +123,6 @@ export default function AcScreen() {
       setData(status);
       setOffline(false);
       setRefreshing(false);
-      // ── Save to cache ─────────────────────────────────────────
       AsyncStorage.setItem(CACHE_KEY, JSON.stringify(status)).catch(() => {});
     });
     const removeConnection = subscribeToConnection(
@@ -145,7 +143,6 @@ export default function AcScreen() {
         if (action === 'set_fan_speed')    return { ...prev, fanSpeed: value as AcStatus['fanSpeed'] };
         return prev;
       })();
-      // ── Persist optimistic UI state to cache ──────────────────
       AsyncStorage.setItem(CACHE_KEY, JSON.stringify(next)).catch(() => {});
       return next;
     });
@@ -156,7 +153,22 @@ export default function AcScreen() {
     }
   }, [offline]);
 
-  // AC-specific electrical readings — all from hardware /live/sensors PZEM fields
+  const setQuickTemperature = useCallback((temperature: number) => {
+    if (!data.isOn) {
+      return;
+    }
+
+    send('set_temperature', temperature);
+  }, [data.isOn, send]);
+
+  const setFanSpeed = useCallback((fanSpeed: AcStatus['fanSpeed']) => {
+    if (!data.isOn) {
+      return;
+    }
+
+    send('set_fan_speed', fanSpeed);
+  }, [data.isOn, send]);
+
   const params = [
     { label: 'AC Current',           value: `${data.acCurrent.toFixed(2)}`,              unit: 'A',   icon: 'activity',         color: colors.primary },
     { label: 'AC Power',             value: `${data.acPower.toFixed(0)}`,                unit: 'W',   icon: 'cpu',              color: colors.accent  },
@@ -176,7 +188,6 @@ export default function AcScreen() {
         />
       }
     >
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Icon name="arrow-left" size={18} color={colors.primary} />
@@ -193,7 +204,6 @@ export default function AcScreen() {
         )}
       </View>
 
-      {/* Temperature Dial Card */}
       <View style={styles.dialCard}>
         <View style={styles.dialRow}>
           <TouchableOpacity
@@ -217,7 +227,6 @@ export default function AcScreen() {
 
         <Text style={styles.tempRange}>{MIN_TEMP}° — {MAX_TEMP}°C</Text>
 
-        {/* Power Button */}
         <TouchableOpacity
           onPress={() => send(data.isOn ? 'power_off' : 'power_on')}
           style={[styles.powerBtn, {
@@ -233,7 +242,6 @@ export default function AcScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* AC Electrical Parameters — from hardware /live/sensors PZEM readings */}
       <Text style={styles.sectionTitle}>ELECTRICAL PARAMETERS</Text>
       <View style={styles.paramsGrid}>
         {params.map(p => (
@@ -248,7 +256,6 @@ export default function AcScreen() {
         ))}
       </View>
 
-      {/* Quick Temperature Presets */}
       <Text style={styles.sectionTitle}>QUICK TEMPERATURE</Text>
       <View style={styles.presetRow}>
         {[16, 18, 20, 22, 24, 26, 28, 30].map(t => {
@@ -256,7 +263,7 @@ export default function AcScreen() {
           return (
             <TouchableOpacity
               key={t}
-              onPress={() => send('set_temperature', t)}
+              onPress={() => setQuickTemperature(t)}
               style={[styles.presetBtn, {
                 backgroundColor: active ? colors.primary : colors.card,
                 borderColor: active ? colors.primary : colors.border,
@@ -270,7 +277,6 @@ export default function AcScreen() {
         })}
       </View>
 
-      {/* Fan Speed */}
       <Text style={styles.sectionTitle}>FAN SPEED</Text>
       <View style={styles.fanRow}>
         {FAN_SPEEDS.map(f => {
@@ -278,7 +284,7 @@ export default function AcScreen() {
           return (
             <TouchableOpacity
               key={f.key}
-              onPress={() => send('set_fan_speed', f.key)}
+              onPress={() => setFanSpeed(f.key)}
               style={[styles.fanBtn, active ? styles.fanBtnActive : styles.fanBtnInactive]}
             >
               <Text style={[styles.fanLabel, active ? styles.fanLabelActive : styles.fanLabelInactive]}>

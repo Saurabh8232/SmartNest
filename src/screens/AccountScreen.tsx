@@ -1,17 +1,18 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   Alert, Animated, Linking, ScrollView, StyleSheet, Text,
   TouchableOpacity, View,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
 import { useAuth } from '../authentication/AuthContext';
+import SmartNestLogo from '../components/SmartNestLogo';
 import colors from '../constants/colors';
 
-// ── Team data ─────────────────────────────────────────────────────
 const TEAM = [
   {
-    name: 'Ayush Sharma',
+    name: 'Ayush Gupta',
     role: 'Project Lead',
     initial: 'A',
     color: colors.primary,
@@ -73,19 +74,16 @@ const TECH_STACK = [
   'REST API', 'ESP32', 'MQTT', 'Android Studio', 'Git', 'GitHub',
 ];
 
-// ── Animated About section ────────────────────────────────────────
 function AboutSection() {
   const headerAnim = useRef(new Animated.Value(0)).current;
   const cardAnims  = useRef(TEAM.map(() => new Animated.Value(0))).current;
   const chipsAnim  = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    // 1. Fade in header
     Animated.timing(headerAnim, {
       toValue: 1, duration: 500, useNativeDriver: true,
     }).start();
 
-    // 2. Cards slide up one by one
     const cardSequence = cardAnims.map((anim, i) =>
       Animated.timing(anim, {
         toValue: 1, duration: 400, delay: 200 + i * 120, useNativeDriver: true,
@@ -93,7 +91,6 @@ function AboutSection() {
     );
     Animated.parallel(cardSequence).start();
 
-    // 3. Chips fade in after cards
     Animated.timing(chipsAnim, {
       toValue: 1, duration: 400, delay: 800, useNativeDriver: true,
     }).start();
@@ -101,7 +98,6 @@ function AboutSection() {
 
   return (
     <>
-      {/* ── Hero ──────────────────────────────────────────────── */}
       <Animated.View
         style={[
           about.heroCard,
@@ -112,7 +108,7 @@ function AboutSection() {
         ]}
       >
         <View style={about.logoWrap}>
-          <Icon name="home" size={28} color={colors.primary} />
+          <SmartNestLogo size={44} />
         </View>
         <Text style={about.heroTitle}>SmartNest</Text>
         <Text style={about.heroTagline}>Smart Home Automation &{'\n'}Energy Monitoring System</Text>
@@ -126,7 +122,6 @@ function AboutSection() {
         </Text>
       </Animated.View>
 
-      {/* ── Project Team ──────────────────────────────────────── */}
       <Text style={about.sectionLabel}>PROJECT TEAM</Text>
 
       {TEAM.map((member, i) => (
@@ -140,7 +135,6 @@ function AboutSection() {
             },
           ]}
         >
-          {/* Avatar */}
           <View style={about.memberTop}>
             <View
               style={[
@@ -161,7 +155,6 @@ function AboutSection() {
             </View>
           </View>
 
-          {/* Responsibilities */}
           <View style={about.respList}>
             {member.responsibilities.map(r => (
               <View key={r} style={about.respRow}>
@@ -171,7 +164,6 @@ function AboutSection() {
             ))}
           </View>
 
-          {/* LinkedIn */}
           <TouchableOpacity
             style={[about.linkedinBtn, { borderColor: member.color + '55' }]}
             onPress={() => Linking.openURL(member.linkedin)}
@@ -183,7 +175,6 @@ function AboutSection() {
         </Animated.View>
       ))}
 
-      {/* ── Technology Stack ──────────────────────────────────── */}
       <Animated.View style={{ opacity: chipsAnim }}>
         <Text style={about.sectionLabel}>TECHNOLOGY STACK</Text>
         <View style={about.chipsWrap}>
@@ -195,7 +186,6 @@ function AboutSection() {
         </View>
       </Animated.View>
 
-      {/* ── Organization ──────────────────────────────────────── */}
       <Animated.View style={[about.orgCard, { opacity: chipsAnim }]}>
         <Icon name="book-open" size={18} color={colors.accent} />
         <View style={about.orgInfo}>
@@ -205,7 +195,6 @@ function AboutSection() {
         </View>
       </Animated.View>
 
-      {/* ── Footer ────────────────────────────────────────────── */}
       <View style={about.footer}>
         <Text style={about.footerText}>Version 1.0.0 Beta</Text>
         <Text style={about.footerText}>© 2026 SmartNest Team</Text>
@@ -215,11 +204,9 @@ function AboutSection() {
   );
 }
 
-// ── Main Screen ───────────────────────────────────────────────────
-export default function AccountScreen() {
+export function AboutScreen() {
   const insets = useSafeAreaInsets();
-  const { user, logout } = useAuth();
-  const [showAbout, setShowAbout] = useState(false);
+  const navigation = useNavigation();
 
   return (
     <ScrollView
@@ -227,13 +214,36 @@ export default function AccountScreen() {
       contentContainerStyle={[styles.content, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 76 }]}
       keyboardShouldPersistTaps="handled"
     >
-      {/* Header */}
+      <View style={styles.headerRow}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+          <Icon name="arrow-left" size={18} color={colors.primary} />
+        </TouchableOpacity>
+        <View style={styles.flex1}>
+          <Text style={styles.title}>About</Text>
+          <Text style={styles.subtitle}>SmartNest application details</Text>
+        </View>
+      </View>
+      <AboutSection />
+    </ScrollView>
+  );
+}
+
+export default function AccountScreen() {
+  const insets = useSafeAreaInsets();
+  const navigation = useNavigation<any>();
+  const { user, logout } = useAuth();
+
+  return (
+    <ScrollView
+      style={styles.scroll}
+      contentContainerStyle={[styles.content, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 76 }]}
+      keyboardShouldPersistTaps="handled"
+    >
       <View style={styles.header}>
         <Text style={styles.title}>Account</Text>
         <Text style={styles.subtitle}>Settings & configuration</Text>
       </View>
 
-      {/* Profile card */}
       <View style={styles.profileCard}>
         <View style={styles.avatarWrap}>
           <Text style={styles.avatarInitial}>
@@ -250,7 +260,6 @@ export default function AccountScreen() {
         </View>
       </View>
 
-      {/* ── A. Diagnostics ── */}
       <Text style={styles.sectionTitle}>A. DIAGNOSTICS</Text>
       <View style={styles.menuGroup}>
         {[
@@ -271,27 +280,24 @@ export default function AccountScreen() {
         ))}
       </View>
 
-      {/* About */}
       <Text style={styles.sectionTitle}>B. ABOUT</Text>
       <View style={styles.menuGroup}>
         <TouchableOpacity
           style={styles.menuItem}
-          onPress={() => setShowAbout(prev => !prev)}
+          onPress={() => navigation.navigate('About')}
           activeOpacity={0.7}
         >
           <View style={[styles.menuIcon, styles.menuIconMuted]}>
             <Icon name="info" size={14} color={colors.mutedForeground} />
           </View>
-          <Text style={styles.menuLabel}>About SmartNest</Text>
+          <Text style={styles.menuLabel}>About</Text>
           <View style={styles.menuRight}>
             <Text style={styles.menuVal}>v1.0.0</Text>
-            <Icon name={showAbout ? "chevron-up" : "chevron-down"} size={14} color={colors.mutedForeground} />
+            <Icon name="chevron-right" size={14} color={colors.mutedForeground} />
           </View>
         </TouchableOpacity>
       </View>
-      {showAbout && <AboutSection />}
 
-      {/* Sign Out */}
       <TouchableOpacity
         style={styles.signOutBtn}
         activeOpacity={0.8}
@@ -305,12 +311,13 @@ export default function AccountScreen() {
   );
 }
 
-// ── Styles ────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   scroll:       { flex: 1, backgroundColor: colors.background },
   content:      { paddingHorizontal: 16, gap: 10 },
 
   header:       { marginBottom: 2 },
+  headerRow:    { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 2 },
+  backBtn:      { width: 38, height: 38, borderRadius: 10, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
   title:        { color: colors.foreground, fontSize: 26, fontWeight: '800', letterSpacing: -0.5 },
   subtitle:     { color: colors.mutedForeground, fontSize: 12, marginTop: 3 },
 
@@ -342,9 +349,7 @@ const styles = StyleSheet.create({
   flex1:        { flex: 1 },
 });
 
-// ── About section styles ──────────────────────────────────────────
 const about = StyleSheet.create({
-  // Hero card
   heroCard: {
     backgroundColor: colors.card,
     borderRadius: 20,
@@ -403,7 +408,6 @@ const about = StyleSheet.create({
     marginTop: 4,
   },
 
-  // Section label
   sectionLabel: {
     color: colors.mutedForeground,
     fontSize: 10,
@@ -412,7 +416,6 @@ const about = StyleSheet.create({
     marginTop: 6,
   },
 
-  // Member cards
   memberCard: {
     backgroundColor: colors.card,
     borderRadius: 18,
@@ -457,7 +460,6 @@ const about = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // Responsibilities
   respList: {
     gap: 6,
   },
@@ -477,7 +479,6 @@ const about = StyleSheet.create({
     flex: 1,
   },
 
-  // LinkedIn button
   linkedinBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -493,7 +494,6 @@ const about = StyleSheet.create({
     fontWeight: '700',
   },
 
-  // Tech stack chips
   chipsWrap: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -514,7 +514,6 @@ const about = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // Organization card
   orgCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -546,7 +545,6 @@ const about = StyleSheet.create({
     marginTop: 1,
   },
 
-  // Footer
   footer: {
     alignItems: 'center',
     gap: 3,

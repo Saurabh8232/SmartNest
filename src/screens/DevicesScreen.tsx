@@ -53,7 +53,6 @@ export default function DevicesScreen() {
       style={styles.scroll}
       contentContainerStyle={[styles.content, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 76 }]}
     >
-      {/* Header */}
       <View style={styles.header}>
         <View>
           <Text style={styles.title}>Devices</Text>
@@ -61,7 +60,6 @@ export default function DevicesScreen() {
         </View>
       </View>
 
-      {/* Device cards */}
       <View style={styles.cardList}>
         {DEVICE_CONFIG.map(cfg => {
           return (
@@ -71,19 +69,16 @@ export default function DevicesScreen() {
               activeOpacity={0.78}
               onPress={() => navigation.navigate(cfg.screen)}
             >
-              {/* Left icon */}
               <View style={[styles.iconBox, { backgroundColor: cfg.color + '20' }]}>
                 <Icon name={cfg.icon} size={28} color={cfg.color} />
               </View>
 
-              {/* Center info */}
               <View style={styles.cardInfo}>
                 <Text style={styles.deviceName}>{cfg.label}</Text>
                 <Text style={styles.deviceSub}>{cfg.subtitle}</Text>
                 <Text style={styles.deviceDetail}>{cfg.detail}</Text>
               </View>
 
-              {/* Right chevron */}
               <View style={styles.cardRight}>
                 <View style={[styles.chevron, { backgroundColor: cfg.color + '15' }]}>
                   <Icon name="chevron-right" size={14} color={cfg.color} />

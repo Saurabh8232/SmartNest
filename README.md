@@ -1,41 +1,158 @@
 # SmartNest
 
-SmartNest is a React Native control app for a hybrid IoT backend that serves REST commands and Socket.IO telemetry for the main board, digital board, AC controller, alerts, dashboard, devices, and history views.
+SmartNest is a React Native IoT control application for monitoring and controlling a Smart Home Automation and Energy Monitoring system. The app combines authenticated REST API commands with Socket.IO real-time telemetry for dashboards, device controllers, alerts, and history analytics.
 
-## Stack
+## Technology Stack
 
-- React Native 0.85
+- React Native 0.85.3
+- React 19.2
 - TypeScript
+- React Navigation 7
 - Socket.IO client
-- AsyncStorage for local session and screen cache
-- Express mock server for local testing
+- AsyncStorage
+- React Native Safe Area Context
+- React Native Vector Icons
+- Express and Socket.IO mock backend for local testing
 
-## Setup
+## Current Features
 
-Update the backend host in [src/config/communication.ts](src/config/communication.ts) before running the app.
+- Login system with session persistence, token refresh, demo fallback for unavailable local auth backends, and loading-state protection against duplicate login requests.
+- SmartNest branding on the login and About screens using the app logo asset.
+- Safe-area aware bottom navigation for gesture navigation and Android 3-button navigation devices.
+- Horizontal swipe navigation between the four primary tabs: Home, Devices, History, and Account.
+- Home dashboard with live electrical metrics, trend cards, recent alerts, global unlock, and global shutdown actions.
+- Devices module with device cards for Main Board, Digital Board, and AC Controller.
+- Main Board controller for relay state, relay locking, lighting group control, reboot, and telemetry.
+- Digital Board controller for digital relay control, reboot, and electrical metrics.
+- AC Controller for power, temperature up/down, quick temperature presets, fan speed, and AC telemetry.
+- History module for energy records, Today / 7 Days / 30 Days filters, custom range placeholder, request cancellation, and downsampled charts.
+- Account module with profile/session state, diagnostics items, sign out, and a dedicated About page.
+- About page with project description, team members, roles, LinkedIn links, technology stack, organization details, and copyright.
+- Real-time connection toast for device online/offline transitions.
 
-For local development you can point the app at the mock server in [mock-server/server.js](mock-server/server.js) and seed data in [db.json](db.json).
+## Navigation Overview
 
-### Start the app
+- Authentication controls whether the app renders `LoginScreen` or the authenticated tab navigator.
+- Bottom tabs: `Home`, `Devices`, `History`, `Account`.
+- `Home` contains `Dashboard` and `AllAlerts`.
+- `Devices` contains `DeviceList`, `MainBoard`, `AC`, and `DigitalBoard`.
+- `Account` contains `AccountMain` and `About`.
+- Swipe navigation is enabled only on root-level primary tabs. Nested screens do not swipe between tabs.
+- Leaving the Devices tab resets the Devices stack to `DeviceList`, so returning to Devices always shows the device cards.
+
+## REST API Communication
+
+REST calls are centralized through authentication-aware helpers where required.
+
+Expected backend endpoints include:
+
+- `POST /api/auth/login`
+- `POST /api/auth/refresh`
+- `POST /api/auth/logout`
+- Device command and snapshot endpoints under `/api/device/:deviceId/...`
+- Dashboard trend endpoint: `GET /dashboard`
+- History endpoint variants under `/api/history/energy`
+
+The current device ID is configured in [src/config/communication.ts](src/config/communication.ts).
+
+## Socket.IO Communication
+
+Socket communication is managed by [src/socket/SocketManager.ts](src/socket/SocketManager.ts) and [src/socket/liveCommunication.ts](src/socket/liveCommunication.ts).
+
+The app listens for events including:
+
+- `device:sensors`
+- `device:relays`
+- `device:status`
+- `device:slaves`
+- `device:connection`
+- `command:ack`
+- `dashboard:update`
+- `dashboard-alerts:update`
+- `devices:update`
+- `alerts:update`
+- `main-board:update`
+- `digital-board:update`
+- `ac:update`
+
+The socket manager reconnects automatically and re-subscribes after reconnect.
+
+## Environment Configuration
+
+Update [src/config/communication.ts](src/config/communication.ts) for the target backend:
+
+```ts
+const API_HOST = "https://smartnest-9k4c.onrender.com";
+
+export const REST_BASE_URL = API_HOST;
+export const SOCKET_URL = API_HOST;
+export const DEVICE_ID = "SmartNest_001";
+```
+
+Use the same host for REST and Socket.IO unless the backend deploys them separately.
+
+## Backend Requirements
+
+The production backend should provide:
+
+- Auth endpoints that return `accessToken` and `refreshToken`.
+- Protected REST endpoints that accept `Authorization: Bearer <token>`.
+- Device command endpoints for relay, board, global, and AC controls.
+- History data with `filter`, `summary`, and `records`.
+- Socket.IO events for live sensors, relays, status, slave board state, command acknowledgements, alerts, and device connection status.
+- Device payloads compatible with [src/types/communication.ts](src/types/communication.ts).
+
+## Installation
+
+Install dependencies from the project root:
 
 ```sh
 npm install
+```
+
+For iOS, install CocoaPods dependencies:
+
+```sh
+cd ios
+bundle install
+bundle exec pod install
+cd ..
+```
+
+## Running Locally
+
+Start Metro:
+
+```sh
 npm start
+```
+
+Run Android debug:
+
+```sh
+npm run android
+```
+
+Run iOS debug:
+
+```sh
+npm run ios
 ```
 
 ## Local Mock Backend
 
-The mock backend is useful when the device firmware or real API is unavailable.
+The mock backend is useful when the real API or device firmware is unavailable.
 
-Start the mock data API and socket server from the project root:
+From the project root:
 
 ```sh
-npm install
 npm run serve:db
 npm run serve:socket
 ```
 
-If you want to run only the socket mock on its own, you can also use the `mock-server/` package directly:
+The JSON server reads [db.json](db.json). The Socket.IO mock server lives in [mock-server/server.js](mock-server/server.js).
+
+You can also run the mock socket package directly:
 
 ```sh
 cd mock-server
@@ -43,158 +160,147 @@ npm install
 npm start
 ```
 
-The mock server reads [db.json](db.json) as its seed data and emits live updates for the dashboard, relays, AC status, alerts, devices, and command acknowledgements.
+## Build Instructions
 
-### Android
+### Android Debug APK
 
 ```sh
-npm run android
+cd android
+gradlew.bat assembleDebug
+```
+
+Output:
+
+```text
+android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+### Android Release APK
+
+```sh
+cd android
+gradlew.bat assembleRelease
+```
+
+Output:
+
+```text
+android/app/build/outputs/apk/release/app-release.apk
+```
+
+The current release configuration still uses the debug signing config. Configure a production keystore in `android/app/build.gradle` before publishing.
+
+### Android Release Bundle
+
+```sh
+cd android
+gradlew.bat bundleRelease
+```
+
+Output:
+
+```text
+android/app/build/outputs/bundle/release/app-release.aab
 ```
 
 ### iOS
 
+Open the workspace in Xcode after installing pods:
+
 ```sh
-bundle install
-bundle exec pod install
-npm run ios
+open ios/SmartNest.xcworkspace
 ```
 
-## Backend Integration
-
-The app expects a backend that exposes:
-
-- `POST /api/auth/login`
-- `POST /api/auth/refresh`
-- `POST /api/auth/logout`
-- Device REST endpoints under `/api/device/:deviceId/...`
-- History REST endpoint `GET /api/history/energy?deviceId=...&filter=today|7d|30d`
-- Socket.IO events such as `subscribe`, `device:sensors`, `device:relays`, `device:status`, `device:slaves`, `command:ack`, `dashboard:update`, `dashboard-alerts:update`, `devices:update`, `alerts:update`, `main-board:update`, `digital-board:update`, and `ac:update`
-
-### Authentication
-
-The auth layer stores the current session locally and keeps the Socket.IO token in sync.
-
-- Real backend auth is used when the auth endpoints are available.
-- If the auth endpoints are unavailable in a local/mock environment, the app falls back to a demo session so the UI can still run.
-- Access token refresh is handled automatically when a request returns `401` and a refresh token is available.
-
-### Realtime behavior
-
-- The socket manager reconnects automatically.
-- The app re-subscribes after reconnect.
-- Commands that return `cmd_id` should be tracked until `command:ack` arrives.
-- The mock socket server emits the current device snapshot immediately after a client subscribes.
-- Dashboard trend data is composed from the latest live history and sensor snapshots.
-
-## Mock Data Contract
-
-The current mock history contract is:
-
-- `filter`: the active period key returned by the API
-- `summary`: `{ totalEnergyKwh, recordCount }`
-- `records`: an array of energy rows with `recordId`, `epoch`, `date`, `mainEnergyKwh`, `digitalEnergyKwh`, `acEnergyKwh`, and `totalEnergyKwh`
-
-The AC activity history shape from the older UI is no longer used by the current history screen.
+Select the target scheme, configure signing, and archive from Xcode for release distribution.
 
 ## Project Structure
 
 ```text
 SmartNest/
-├── App.tsx
-├── index.js
-├── package.json
-├── README.md
-├── app.json
-├── babel.config.js
-├── metro.config.js
-├── tsconfig.json
-├── android/
-├── ios/
-├── mock-server/
-│   ├── package.json
-│   └── server.js
-├── src/
-│   ├── api/
-│   │   └── historyApi.ts
-│   ├── authentication/
-│   │   ├── AuthContext.tsx
-│   │   └── authService.ts
-│   ├── components/
-│   │   ├── MetricCard.tsx
-│   │   ├── MiniChart.tsx
-│   │   └── RelayToggle.tsx
-│   ├── config/
-│   │   └── communication.ts
-│   ├── constants/
-│   │   └── colors.ts
-│   ├── screens/
-│   │   ├── AccountScreen.tsx
-│   │   ├── AcScreen.tsx
-│   │   ├── AlertsScreen.tsx
-│   │   ├── DashboardScreen.tsx
-│   │   ├── DevicesScreen.tsx
-│   │   ├── DigitalBoardScreen.tsx
-│   │   ├── HistoryScreen.tsx
-│   │   ├── LoginScreen.tsx
-│   │   └── MainBoardScreen.tsx
-│   ├── socket/
-│   │   ├── events.ts
-│   │   ├── liveCommunication.ts
-│   │   └── SocketManager.ts
-│   └── types/
-│       └── communication.ts
-└── __tests__/
+|-- App.tsx
+|-- index.js
+|-- package.json
+|-- README.md
+|-- android/
+|-- ios/
+|-- mock-server/
+|   |-- package.json
+|   `-- server.js
+|-- src/
+|   |-- api/
+|   |   `-- historyApi.ts
+|   |-- authentication/
+|   |   |-- AuthContext.tsx
+|   |   `-- authService.ts
+|   |-- components/
+|   |   |-- MetricCard.tsx
+|   |   |-- MiniChart.tsx
+|   |   |-- RelayToggle.tsx
+|   |   `-- SmartNestLogo.tsx
+|   |-- config/
+|   |   `-- communication.ts
+|   |-- constants/
+|   |   `-- colors.ts
+|   |-- screens/
+|   |   |-- AccountScreen.tsx
+|   |   |-- AcScreen.tsx
+|   |   |-- AlertsScreen.tsx
+|   |   |-- DashboardScreen.tsx
+|   |   |-- DevicesScreen.tsx
+|   |   |-- DigitalBoardScreen.tsx
+|   |   |-- HistoryScreen.tsx
+|   |   |-- LoginScreen.tsx
+|   |   `-- MainBoardScreen.tsx
+|   |-- socket/
+|   |   |-- events.ts
+|   |   |-- liveCommunication.ts
+|   |   `-- SocketManager.ts
+|   `-- types/
+|       `-- communication.ts
+`-- __tests__/
 ```
 
-## What Each Area Does
+## Key Files
 
-- `src/authentication/` keeps the active session, login state, token persistence, and logout flow.
-- `src/api/` contains REST-only data loaders, including the history page requests.
-- `src/socket/` owns Socket.IO connection setup, subscriptions, and command/event helpers.
-- `src/screens/` contains the user-facing pages for dashboard, devices, board controls, AC, alerts, history, login, and account.
-- `src/components/` contains shared UI pieces used by multiple screens.
-- `mock-server/` is the local backend simulator for testing without the real server.
+- [App.tsx](App.tsx): root navigation, authenticated tabs, safe-area tab bar, swipe navigation, and connection toast.
+- [src/config/communication.ts](src/config/communication.ts): REST host, Socket.IO host, and device ID.
+- [src/authentication/authService.ts](src/authentication/authService.ts): login, token refresh, logout, and authenticated fetch helper.
+- [src/socket/liveCommunication.ts](src/socket/liveCommunication.ts): live state composition, subscriptions, and device command helpers.
+- [src/api/historyApi.ts](src/api/historyApi.ts): energy history REST loader and response normalization.
+- [mock-server/server.js](mock-server/server.js): local REST and Socket.IO simulator.
 
-## Screens
+## Quality Commands
 
-- `LoginScreen` handles authentication entry.
-- `DashboardScreen` shows live system summary, alerts, and trend cards.
-- `DevicesScreen` lists available devices and routes into the device-specific control screens.
-- `MainBoardScreen` manages the main relay board, relay lock state, lighting group, shutdown, and reboot actions.
-- `DigitalBoardScreen` manages the digital relay, electrical metrics, and reboot actions.
-- `AcScreen` manages AC power, temperature, fan speed, and live telemetry.
-- `AlertsScreen` shows unresolved alerts and lets you mark them resolved.
-- `AccountScreen` shows the current session and sign-out controls.
-- `HistoryScreen` is the analytics/history view and is handled separately because its backend area is still being developed.
+Typecheck:
 
-## History Page
+```sh
+npx tsc --noEmit
+```
 
-The history page is implemented in [src/screens/HistoryScreen.tsx](src/screens/HistoryScreen.tsx) and loads data through [src/api/historyApi.ts](src/api/historyApi.ts).
+Lint:
 
-- The current UI shows the Energy tab and keeps the AC tab code commented out for future use.
-- Supported periods are Today, 7 Days, 30 Days, plus a custom-range placeholder.
-- The current backend response shape is `filter`, `summary`, and `records`.
-- If you change the mock history shape, update [src/api/historyApi.ts](src/api/historyApi.ts), [mock-server/server.js](mock-server/server.js), and [db.json](db.json) together.
+```sh
+npm run lint
+```
 
-## Scripts
+Tests:
 
-- `npm start` - start Metro
-- `npm run android` - launch Android
-- `npm run ios` - launch iOS
-- `npm run serve:db` - start the JSON server
-- `npm run serve:socket` - start the mock Socket.IO server
-- `npm test` - run Jest
-- `npx tsc --noEmit` - typecheck
+```sh
+npm test
+```
 
-## Useful Files
+## Known Limitations
 
-- [src/config/communication.ts](src/config/communication.ts) controls the backend URL and device ID.
-- [src/socket/liveCommunication.ts](src/socket/liveCommunication.ts) owns subscriptions, command helpers, and composed dashboard state.
-- [mock-server/server.js](mock-server/server.js) serves the local REST and Socket.IO mock backend.
-- [db.json](db.json) provides the seed data used by the mock server.
+- The History custom range control is currently a placeholder and shows a "coming soon" alert.
+- The current History UI displays energy records only.
+- AC state is inferred from local commands and live sensor current because the backend does not broadcast full AC state over Socket.IO.
+- Some dashboard/alert/device socket channels are stubbed until backend events are fully documented.
+- Android release signing must be replaced with a production keystore before distribution.
+- The default Jest setup may need transform configuration updates for React Navigation ESM packages before tests can run in every environment.
 
-## Notes
+## Handoff Notes
 
-- If you change the backend host or port, update `REST_BASE_URL` and `SOCKET_URL` together.
-- The app can fall back to a demo session when the auth backend is unavailable, which is useful for local UI testing.
-- The history backend is intentionally kept simple in the mock data so the screens stay aligned with the current app contract.
+- Keep REST and Socket.IO contracts synchronized with [src/types/communication.ts](src/types/communication.ts).
+- Update [src/config/communication.ts](src/config/communication.ts) before testing against a different backend.
+- Preserve the Safe Area bottom tab behavior when modifying navigation.
+- Do not dispatch stack actions from the tab navigator; reset nested route state from the owning navigator context when needed.

@@ -1,30 +1,38 @@
 import React, { useState } from 'react';
 import {
-  KeyboardAvoidingView, Platform, StyleSheet,
+  ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet,
   Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
 import { useAuth } from '../authentication/AuthContext';
+import SmartNestLogo from '../components/SmartNestLogo';
 import colors from '../constants/colors';
 
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
   const { login } = useAuth();
 
+  const [fullName, setFullName] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleLogin = async () => {
+    if (isLoading) return;
+
     setError('');
     if (!username.trim()) { setError('Please enter your username.'); return; }
     if (!password.trim()) { setError('Please enter a password.'); return; }
+    setIsLoading(true);
     try {
       await login({ username: username.trim(), password });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to sign in.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -35,21 +43,35 @@ export default function LoginScreen() {
     >
       <View style={styles.inner}>
 
-        {/* Logo */}
         <View style={styles.logoWrap}>
           <View style={styles.logoCircle}>
-            <Icon name="home" size={32} color={colors.primary} />
+            <SmartNestLogo size={48} />
           </View>
           <Text style={styles.appName}>SmartNest</Text>
           <Text style={styles.appTagline}>IoT Control System</Text>
         </View>
 
-        {/* Card */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Welcome back</Text>
           <Text style={styles.cardSub}>Sign in to control your home</Text>
 
-          {/* Name */}
+          <View style={styles.fieldWrap}>
+            <Text style={styles.fieldLabel}>FULL NAME</Text>
+            <View style={styles.inputRow}>
+              <Icon name="user" size={15} color={colors.mutedForeground} style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                value={fullName}
+                onChangeText={setFullName}
+                placeholder="Enter full name"
+                placeholderTextColor={colors.mutedForeground}
+                autoCapitalize="words"
+                autoCorrect={false}
+                editable={!isLoading}
+              />
+            </View>
+          </View>
+
           <View style={styles.fieldWrap}>
             <Text style={styles.fieldLabel}>USERNAME</Text>
             <View style={styles.inputRow}>
@@ -62,11 +84,11 @@ export default function LoginScreen() {
                 placeholderTextColor={colors.mutedForeground}
                 autoCapitalize="none"
                 autoCorrect={false}
+                editable={!isLoading}
               />
             </View>
           </View>
 
-          {/* Password */}
           <View style={styles.fieldWrap}>
             <Text style={styles.fieldLabel}>PASSWORD</Text>
             <View style={styles.inputRow}>
@@ -80,14 +102,18 @@ export default function LoginScreen() {
                 secureTextEntry={!showPass}
                 autoCapitalize="none"
                 autoCorrect={false}
+                editable={!isLoading}
               />
-              <TouchableOpacity onPress={() => setShowPass(p => !p)} style={styles.eyeBtn}>
+              <TouchableOpacity
+                onPress={() => setShowPass(p => !p)}
+                style={styles.eyeBtn}
+                disabled={isLoading}
+              >
                 <Icon name={showPass ? 'eye-off' : 'eye'} size={15} color={colors.mutedForeground} />
               </TouchableOpacity>
             </View>
           </View>
 
-          {/* Error */}
           {error ? (
             <View style={styles.errorRow}>
               <Icon name="alert-circle" size={13} color={colors.destructive} />
@@ -95,10 +121,20 @@ export default function LoginScreen() {
             </View>
           ) : null}
 
-          {/* Login button */}
-          <TouchableOpacity style={styles.loginBtn} onPress={handleLogin} activeOpacity={0.85}>
-            <Icon name="log-in" size={16} color={colors.background} />
-            <Text style={styles.loginBtnText}>Sign In</Text>
+          <TouchableOpacity
+            style={styles.loginBtn}
+            onPress={handleLogin}
+            activeOpacity={0.85}
+            disabled={isLoading}
+          >
+            {isLoading ? (
+              <ActivityIndicator size="small" color={colors.background} />
+            ) : (
+              <>
+                <Icon name="log-in" size={16} color={colors.background} />
+                <Text style={styles.loginBtnText}>Sign In</Text>
+              </>
+            )}
           </TouchableOpacity>
         </View>
 

@@ -21,8 +21,6 @@ import colors from '../constants/colors';
 
 const CACHE_KEY = '@smartnest_mainboard_v1';
 
-// mainCurrent matches hardware: main_current (ACS712 for relays 1-6)
-// mainEnergyKwh matches hardware: main_energy_kwh (cumulative energy relays 1-6)
 const DEFAULT_DATA: MainBoardStatus = {
   masterLockEnabled: false,
   shutdownEnabled: false,
@@ -47,7 +45,6 @@ export default function MainBoardScreen() {
   const pendingRollbackRef = useRef<(() => void) | null>(null);
   const pendingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── Load cached data on app start ──────────────────────────────
   useEffect(() => {
     AsyncStorage.getItem(CACHE_KEY).then(raw => {
       if (!raw) return;
@@ -266,7 +263,6 @@ export default function MainBoardScreen() {
         />
       }
     >
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Icon name="arrow-left" size={18} color={colors.primary} />
@@ -283,7 +279,6 @@ export default function MainBoardScreen() {
         )}
       </View>
 
-      {/* Stats Row — main_current and main_energy_kwh for relays 1-6 only */}
       <View style={styles.statsRow}>
         {[
           { label: 'Main Current',  val: `${data.mainCurrent.toFixed(2)} A`,    color: colors.primary, icon: 'activity'          },
@@ -299,7 +294,6 @@ export default function MainBoardScreen() {
         ))}
       </View>
 
-      {/* Reboot Button */}
       <TouchableOpacity
         onPress={handleReboot}
         activeOpacity={0.85}
@@ -315,7 +309,6 @@ export default function MainBoardScreen() {
         </View>
       </TouchableOpacity>
 
-      {/* Lighting Group */}
       <View style={styles.groupCard}>
         <View style={styles.groupHeader}>
           <View style={styles.groupIcon}>

@@ -9,33 +9,19 @@ import { getHistory, HistoryData, EnergyRecord } from '../api/historyApi';
 import MiniChart from '../components/MiniChart';
 import colors from '../constants/colors';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
-// Only Energy is active in the current API contract.
-// AC tab UI is kept below as commented-out code for later re-enable.
 type Period = 'today' | 'last7days' | 'last30days';
-type Tab = 'energy' | 'ac';
+type Tab = 'energy';
 
-// ── Constants ─────────────────────────────────────────────────────────────────
 const PERIODS: { key: Period; label: string }[] = [
-  { key: 'today',      label: 'Today'   },
-  { key: 'last7days',  label: '7 Days'  },
+  { key: 'today', label: 'Today' },
+  { key: 'last7days', label: '7 Days' },
   { key: 'last30days', label: '30 Days' },
 ];
 
-// Tabs — power / current / voltage / temp remain commented out.
 const TABS: { key: Tab; label: string; icon: string; color: string }[] = [
-  // { key: 'power',   label: 'Power',   icon: 'zap',              color: colors.accent  },
-  { key: 'energy',  label: 'Energy',  icon: 'battery-charging', color: colors.success },
-  // { key: 'current', label: 'Current', icon: 'activity',          color: colors.primary },
-  // { key: 'voltage', label: 'Voltage', icon: 'zap-off',           color: colors.warning },
-  // { key: 'temp',    label: 'Temp',    icon: 'thermometer',       color: '#f59e0b'      },
-  // { key: 'ac',      label: 'AC',      icon: 'wind',             color: '#38bdf8'      },
+  { key: 'energy', label: 'Energy', icon: 'battery-charging', color: colors.success },
 ];
 
-// HistoryData shape (from historyApi.ts / types/communication.ts):
-//   filter: string
-//   summary: { totalEnergyKwh: number; recordCount: number; }
-//   records: EnergyRecord[]
 const DEFAULT_DATA: HistoryData = {
   filter: 'today',
   summary: { totalEnergyKwh: 0, recordCount: 0 },
@@ -43,7 +29,7 @@ const DEFAULT_DATA: HistoryData = {
 };
 
 function periodLabel(p: Period) {
-  if (p === 'today')     return 'Last 24 hours';
+  if (p === 'today') return 'Last 24 hours';
   if (p === 'last7days') return 'Last 7 days';
   return 'Last 30 days';
 }
@@ -56,31 +42,23 @@ function formatRecordTime(date: string) {
   return date.slice(11, 16) || '--:--';
 }
 
-// ── Screen ────────────────────────────────────────────────────────────────────
 export default function HistoryScreen() {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const chartWidth = width - 64;
   const tabScrollRef = useRef<ScrollView>(null);
 
-  const [period, setPeriod]   = useState<Period>('today');
-  const [tab, setTab]         = useState<Tab>('energy');
-  const [data, setData]       = useState<HistoryData>(DEFAULT_DATA);
+  const [period, setPeriod] = useState<Period>('today');
+  const [tab, setTab] = useState<Tab>('energy');
+  const [data, setData] = useState<HistoryData>(DEFAULT_DATA);
   const [offline, setOffline] = useState(false);
   const [loading, setLoading] = useState(true);
   const [errorText, setErrorText] = useState('');
 
-  // FIX (Issue 2 — History freeze): Track an AbortController so we can cancel
-  // the previous request the moment the user switches to a different period
-  // filter. Without this, the old (potentially slow) request keeps running
-  // concurrently with the new one. If the old request timed out (8 s) the user
-  // experienced up to 8 seconds of frozen/loading state even after changing
-  // the filter.
-  const abortRef    = useRef<AbortController | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
   const requestIdRef = useRef(0);
 
   const load = useCallback(async () => {
-    // Cancel any in-flight request from a previous period selection.
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
@@ -97,8 +75,6 @@ export default function HistoryScreen() {
       setData(nextData);
     } catch (error) {
       if (requestIdRef.current !== requestId) return;
-      // Ignore cancellations caused by the user changing the filter — a new
-      // request is already in-flight for the newly selected period.
       if ((error as Error).name === 'AbortError') return;
       setOffline(true);
       setData(DEFAULT_DATA);
@@ -111,8 +87,6 @@ export default function HistoryScreen() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Abort any pending request when the component unmounts to avoid state
-  // updates on an unmounted component.
   useEffect(() => {
     return () => { abortRef.current?.abort(); };
   }, []);
@@ -129,7 +103,6 @@ export default function HistoryScreen() {
       style={styles.scroll}
       contentContainerStyle={[styles.content, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 76 }]}
     >
-      {/* ── Header ── */}
       <View style={styles.header}>
         <View>
           <Text style={styles.title}>History</Text>
@@ -143,7 +116,6 @@ export default function HistoryScreen() {
         )}
       </View>
 
-      {/* ── Period filter ── */}
       <View style={styles.periodRow}>
         {PERIODS.map(p => {
           const active = period === p.key;
@@ -153,7 +125,7 @@ export default function HistoryScreen() {
               onPress={() => setPeriod(p.key)}
               style={[styles.periodBtn, {
                 backgroundColor: active ? colors.primary : colors.card,
-                borderColor:     active ? colors.primary : colors.border,
+                borderColor: active ? colors.primary : colors.border,
               }]}
             >
               <Text style={[styles.periodText, { color: active ? colors.background : colors.mutedForeground }]}>
@@ -171,7 +143,6 @@ export default function HistoryScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* ── Category tabs (Energy only; AC tab left commented out) ── */}
       <ScrollView
         ref={tabScrollRef}
         horizontal
@@ -186,7 +157,7 @@ export default function HistoryScreen() {
               onPress={() => setTab(t.key)}
               style={[styles.tabBtn, {
                 backgroundColor: active ? t.color : colors.card,
-                borderColor:     active ? t.color : colors.border,
+                borderColor: active ? t.color : colors.border,
               }]}
             >
               <Icon name={t.icon} size={13} color={active ? colors.background : t.color} />
@@ -198,26 +169,18 @@ export default function HistoryScreen() {
         })}
       </ScrollView>
 
-      {/* ── Loading / Offline / No Data ── */}
       {loading ? (
-        // FIX (Issue 2 — History freeze): Show loading state while request is
-        // in-flight. If the user changes period the old request is cancelled and
-        // the loading indicator immediately reflects the new request instead of
-        // keeping the screen stuck on the previous period's data.
         <View style={styles.emptyCard}>
           <Icon name="clock" size={42} color={colors.mutedForeground} />
           <Text style={styles.emptyTitle}>Loading...</Text>
         </View>
-
       ) : offline ? (
         <View style={styles.emptyCard}>
           <Icon name="wifi-off" size={42} color={colors.mutedForeground} />
           <Text style={styles.emptyTitle}>Not Connected</Text>
           <Text style={styles.emptyDesc}>{errorText || 'Check your backend connection and login session.'}</Text>
         </View>
-
       ) : !hasData ? (
-        /* ── No Data ── */
         <View style={styles.emptyCard}>
           <View style={styles.noDataIconWrap}>
             <Icon name="trending-up" size={36} color={colors.mutedForeground} />
@@ -225,11 +188,8 @@ export default function HistoryScreen() {
           <Text style={styles.emptyTitle}>No Data Available</Text>
           <Text style={styles.emptyDesc}>No records found for the selected period.</Text>
         </View>
-
       ) : (
-        /* ── Energy Tab ── */
         <>
-          {/* Energy trend chart — derived from records */}
           {trend.length > 1 && (
             <View style={styles.chartCard}>
               <View style={styles.chartHeader}>
@@ -241,7 +201,6 @@ export default function HistoryScreen() {
                   <Text style={styles.kwhText}>kWh</Text>
                 </View>
               </View>
-              {/* MiniChart internally downsamples to 60 points max — safe for any period */}
               <MiniChart data={trend} color={colors.success} height={80} width={chartWidth} />
               <View style={styles.xAxis}>
                 {['00:00', '06:00', '12:00', '18:00', '24:00'].map(l => (
@@ -251,7 +210,6 @@ export default function HistoryScreen() {
             </View>
           )}
 
-          {/* Energy records list — uses records: EnergyRecord[] */}
           {data.records.length > 0 && (
             <>
               <Text style={styles.sectionLabel}>ENERGY RECORDS</Text>
@@ -276,12 +234,9 @@ export default function HistoryScreen() {
   );
 }
 
-// ── Styles ────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   scroll: { flex: 1, backgroundColor: colors.background },
   content: { paddingHorizontal: 16, gap: 12 },
-  flex1: { flex: 1 },
-
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 2 },
   title: { color: colors.foreground, fontSize: 26, fontWeight: '800', letterSpacing: -0.5 },
   subtitle: { color: colors.mutedForeground, fontSize: 12, marginTop: 3 },
@@ -315,17 +270,9 @@ const styles = StyleSheet.create({
   xAxis: { flexDirection: 'row', justifyContent: 'space-between' },
   xLabel: { color: colors.mutedForeground, fontSize: 9 },
 
-  noDataCard: { alignItems: 'center', gap: 8, paddingVertical: 32, backgroundColor: colors.card, borderRadius: 14, borderWidth: 1, borderColor: colors.border },
-  noDataText: { color: colors.mutedForeground, fontSize: 13, textAlign: 'center', paddingHorizontal: 24 },
-
   recList: { gap: 8 },
   recCard: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.card, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: 12 },
   recDot: { width: 8, height: 8, borderRadius: 4 },
   recTime: { color: colors.mutedForeground, fontSize: 12, width: 52 },
   recVal: { fontSize: 15, fontWeight: '700', flex: 1 },
-  recMeta: { color: colors.mutedForeground, fontSize: 11, marginTop: 2 },
-
-  activityCard: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.card, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: 12 },
-  activityIcon: { width: 30, height: 30, borderRadius: 8, backgroundColor: '#38bdf822', alignItems: 'center', justifyContent: 'center' },
-  recTitle: { color: colors.foreground, fontSize: 13, fontWeight: '600' },
 });

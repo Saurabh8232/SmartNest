@@ -1,7 +1,16 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, StyleSheet, Text, View } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
+import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Animated,
+  PanResponder,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import { CommonActions, NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import type { BottomTabNavigationOptions } from '@react-navigation/bottom-tabs';
+import type { NavigationState, ParamListBase, RouteProp } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -16,7 +25,7 @@ import MainBoardScreen from './src/screens/MainBoardScreen';
 import DigitalBoardScreen from './src/screens/DigitalBoardScreen';
 import AcScreen from './src/screens/AcScreen';
 import HistoryScreen from './src/screens/HistoryScreen';
-import AccountScreen from './src/screens/AccountScreen';
+import AccountScreen, { AboutScreen } from './src/screens/AccountScreen';
 import colors from './src/constants/colors';
 import socketManager from './src/socket/SocketManager';
 import {
@@ -27,6 +36,22 @@ import {
 const Tab = createBottomTabNavigator();
 const HomeStack = createNativeStackNavigator();
 const DevicesStack = createNativeStackNavigator();
+const AccountStack = createNativeStackNavigator();
+const TAB_BAR_CONTENT_HEIGHT = 62;
+const SWIPE_DISTANCE_THRESHOLD = 60;
+const SWIPE_DIRECTION_LOCK_RATIO = 1.3;
+const PRIMARY_TAB_NAMES = ['Home', 'Devices', 'History', 'Account'] as const;
+type PrimaryTabName = typeof PRIMARY_TAB_NAMES[number];
+type TabSwipeState = {
+  setStackAtRoot: (tabName: PrimaryTabName, atRoot: boolean) => void;
+};
+const TabSwipeStateContext = React.createContext<TabSwipeState | null>(null);
+const TAB_ICONS: Record<string, string> = {
+  Home: 'home',
+  Devices: 'cpu',
+  History: 'bar-chart-2',
+  Account: 'user',
+};
 
 function formatLastSeen(iso: string): string {
   const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
@@ -124,8 +149,18 @@ function DeviceConnectionToast() {
 }
 
 function HomeNavigator() {
+  const swipeState = useContext(TabSwipeStateContext);
+  const screenListeners = useMemo(
+    () => ({
+      state: (event: { data?: { state?: NavigationState } }) => {
+        swipeState?.setStackAtRoot('Home', (event.data?.state?.index ?? 0) === 0);
+      },
+    }),
+    [swipeState],
+  );
+
   return (
-    <HomeStack.Navigator screenOptions={{ headerShown: false }}>
+    <HomeStack.Navigator screenOptions={{ headerShown: false }} screenListeners={screenListeners}>
       <HomeStack.Screen name="Dashboard" component={DashboardScreen} />
       <HomeStack.Screen name="AllAlerts" component={AlertsScreen} />
     </HomeStack.Navigator>
@@ -133,8 +168,18 @@ function HomeNavigator() {
 }
 
 function DevicesNavigator() {
+  const swipeState = useContext(TabSwipeStateContext);
+  const screenListeners = useMemo(
+    () => ({
+      state: (event: { data?: { state?: NavigationState } }) => {
+        swipeState?.setStackAtRoot('Devices', (event.data?.state?.index ?? 0) === 0);
+      },
+    }),
+    [swipeState],
+  );
+
   return (
-    <DevicesStack.Navigator screenOptions={{ headerShown: false }}>
+    <DevicesStack.Navigator screenOptions={{ headerShown: false }} screenListeners={screenListeners}>
       <DevicesStack.Screen name="DeviceList" component={DevicesScreen} />
       <DevicesStack.Screen name="MainBoard" component={MainBoardScreen} />
       <DevicesStack.Screen name="AC" component={AcScreen} />
@@ -143,41 +188,230 @@ function DevicesNavigator() {
   );
 }
 
+function AccountNavigator() {
+  const swipeState = useContext(TabSwipeStateContext);
+  const screenListeners = useMemo(
+    () => ({
+      state: (event: { data?: { state?: NavigationState } }) => {
+        swipeState?.setStackAtRoot('Account', (event.data?.state?.index ?? 0) === 0);
+      },
+    }),
+    [swipeState],
+  );
+
+  return (
+    <AccountStack.Navigator screenOptions={{ headerShown: false }} screenListeners={screenListeners}>
+      <AccountStack.Screen name="AccountMain" component={AccountScreen} />
+      <AccountStack.Screen name="About" component={AboutScreen} />
+    </AccountStack.Navigator>
+  );
+}
+
+function MainTabBarIcon({
+  routeName,
+  color,
+  size,
+}: {
+  routeName: string;
+  color: string;
+  size: number;
+}) {
+  return <Icon name={TAB_ICONS[routeName] ?? 'circle'} size={size - 2} color={color} />;
+}
+
+function createMainTabScreenOptions(bottomInset: number) {
+  return ({
+    route,
+  }: {
+    route: RouteProp<ParamListBase, string>;
+  }): BottomTabNavigationOptions => ({
+    headerShown: false,
+    tabBarStyle: {
+      backgroundColor: colors.card,
+      borderTopColor: colors.border,
+      borderTopWidth: 1,
+      elevation: 0,
+      height: TAB_BAR_CONTENT_HEIGHT + bottomInset,
+      paddingBottom: bottomInset,
+    },
+    tabBarActiveTintColor: colors.primary,
+    tabBarInactiveTintColor: colors.mutedForeground,
+    tabBarLabelStyle: { fontSize: 10, fontWeight: '600', marginBottom: 4 },
+    tabBarIcon: ({ color, size }) => (
+      <MainTabBarIcon routeName={route.name} color={color} size={size} />
+    ),
+  });
+}
+
+function isPrimaryTabAtRoot(route?: NavigationState['routes'][number]) {
+  if (!route || !PRIMARY_TAB_NAMES.includes(route.name as typeof PRIMARY_TAB_NAMES[number])) {
+    return false;
+  }
+
+  const nestedState = route.state as NavigationState | undefined;
+  return (nestedState?.index ?? 0) === 0;
+}
+
+function resetNestedTabRouteState(tabState: NavigationState, tabName: PrimaryTabName) {
+  const targetRoute = tabState.routes.find(route => route.name === tabName);
+  const targetState = targetRoute?.state as NavigationState | undefined;
+
+  if (!targetState || targetState.index === 0) {
+    return null;
+  }
+
+  const rootRoute = targetState.routes[0];
+  if (!rootRoute) {
+    return null;
+  }
+
+  return {
+    ...tabState,
+    routes: tabState.routes.map(route =>
+      route.name === tabName
+        ? {
+            ...route,
+            state: {
+              ...targetState,
+              index: 0,
+              routes: [rootRoute],
+            },
+          }
+        : route,
+    ),
+  };
+}
+
 function MainTabs() {
+  const insets = useSafeAreaInsets();
+  const activeTabIndexRef = useRef(0);
+  const previousTabIndexRef = useRef(0);
+  const tabNavigationRef = useRef<{
+    dispatch: (action: ReturnType<typeof CommonActions.reset>) => void;
+    navigate: (name: string) => void;
+  } | null>(null);
+  const swipeEnabledRef = useRef(true);
+  const tabRootStateRef = useRef<Record<PrimaryTabName, boolean>>({
+    Home: true,
+    Devices: true,
+    History: true,
+    Account: true,
+  });
+
   useEffect(() => {
     socketManager.connect();
     return () => socketManager.disconnect();
   }, []);
 
+  const screenOptions = useMemo(
+    () => createMainTabScreenOptions(insets.bottom),
+    [insets.bottom],
+  );
+
+  const syncSwipeEnabled = useCallback(() => {
+    const activeTabName = PRIMARY_TAB_NAMES[activeTabIndexRef.current];
+    swipeEnabledRef.current = !!activeTabName && tabRootStateRef.current[activeTabName];
+  }, []);
+
+  const swipeState = useMemo<TabSwipeState>(
+    () => ({
+      setStackAtRoot: (tabName, atRoot) => {
+        tabRootStateRef.current[tabName] = atRoot;
+        syncSwipeEnabled();
+      },
+    }),
+    [syncSwipeEnabled],
+  );
+
+  const screenListeners = useMemo(
+    () =>
+      ({
+        navigation,
+      }: {
+        navigation: {
+          dispatch: (action: ReturnType<typeof CommonActions.reset>) => void;
+          navigate: (name: string) => void;
+        };
+      }) => {
+        tabNavigationRef.current = navigation;
+
+        return {
+          state: (event: { data?: { state?: NavigationState } }) => {
+            const tabState = event.data?.state;
+            const activeIndex = tabState?.index ?? 0;
+            const activeRoute = tabState?.routes[activeIndex];
+            const previousTabName = PRIMARY_TAB_NAMES[previousTabIndexRef.current];
+            const activeTabName = PRIMARY_TAB_NAMES[activeIndex];
+
+            activeTabIndexRef.current = activeIndex;
+            if (
+              activeRoute?.name === 'Home' ||
+              activeRoute?.name === 'Devices' ||
+              activeRoute?.name === 'Account'
+            ) {
+              tabRootStateRef.current[activeRoute.name] = isPrimaryTabAtRoot(activeRoute);
+            }
+            if (previousTabName && previousTabName !== activeTabName) {
+              const resetState = tabState
+                ? resetNestedTabRouteState(tabState, previousTabName)
+                : null;
+
+              if (resetState) {
+                navigation.dispatch(CommonActions.reset(resetState));
+                tabRootStateRef.current[previousTabName] = true;
+              }
+            }
+            previousTabIndexRef.current = activeIndex;
+            syncSwipeEnabled();
+          },
+        };
+      },
+    [syncSwipeEnabled],
+  );
+
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, gestureState) => {
+          const horizontalDistance = Math.abs(gestureState.dx);
+          const verticalDistance = Math.abs(gestureState.dy);
+
+          return (
+            swipeEnabledRef.current &&
+            horizontalDistance > 20 &&
+            horizontalDistance > verticalDistance * SWIPE_DIRECTION_LOCK_RATIO
+          );
+        },
+        onPanResponderRelease: (_, gestureState) => {
+          if (!swipeEnabledRef.current || Math.abs(gestureState.dx) < SWIPE_DISTANCE_THRESHOLD) {
+            return;
+          }
+
+          const nextIndex =
+            gestureState.dx < 0
+              ? activeTabIndexRef.current + 1
+              : activeTabIndexRef.current - 1;
+
+          if (nextIndex < 0 || nextIndex >= PRIMARY_TAB_NAMES.length) {
+            return;
+          }
+
+          tabNavigationRef.current?.navigate(PRIMARY_TAB_NAMES[nextIndex]);
+        },
+      }),
+    [],
+  );
+
   return (
-    <View style={styles.tabsRoot}>
-      <Tab.Navigator
-        screenOptions={({ route }) => ({
-          headerShown: false,
-          tabBarStyle: {
-            backgroundColor: colors.card,
-            borderTopColor: colors.border,
-            borderTopWidth: 1,
-            elevation: 0,
-            height: 62,
-            paddingBottom: 4,
-          },
-          tabBarActiveTintColor: colors.primary,
-          tabBarInactiveTintColor: colors.mutedForeground,
-          tabBarLabelStyle: { fontSize: 10, fontWeight: '600', marginBottom: 4 },
-          tabBarIcon: ({ color, size }) => {
-            const icons: Record<string, string> = {
-              Home: 'home', Devices: 'cpu', History: 'bar-chart-2', Account: 'user',
-            };
-            return <Icon name={icons[route.name] ?? 'circle'} size={size - 2} color={color} />;
-          },
-        })}
-      >
-        <Tab.Screen name="Home" component={HomeNavigator} />
-        <Tab.Screen name="Devices" component={DevicesNavigator} />
-        <Tab.Screen name="History" component={HistoryScreen} />
-        <Tab.Screen name="Account" component={AccountScreen} />
-      </Tab.Navigator>
+    <View style={styles.tabsRoot} {...panResponder.panHandlers}>
+      <TabSwipeStateContext.Provider value={swipeState}>
+        <Tab.Navigator screenOptions={screenOptions} screenListeners={screenListeners}>
+          <Tab.Screen name="Home" component={HomeNavigator} />
+          <Tab.Screen name="Devices" component={DevicesNavigator} />
+          <Tab.Screen name="History" component={HistoryScreen} />
+          <Tab.Screen name="Account" component={AccountNavigator} />
+        </Tab.Navigator>
+      </TabSwipeStateContext.Provider>
       <DeviceConnectionToast />
     </View>
   );
@@ -195,7 +429,6 @@ function RootNavigator() {
   }
 
   return (
-    // ✅ All 6 required properties provided
 <NavigationContainer
   key={user ? 'authenticated' : 'unauthenticated'}
   theme={{

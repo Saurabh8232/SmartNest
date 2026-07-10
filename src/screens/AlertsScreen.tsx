@@ -82,7 +82,6 @@ export default function AlertsScreen() {
       contentContainerStyle={[styles.content, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 76 }]}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.primary} />}
     >
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Icon name="arrow-left" size={18} color={colors.primary} />
@@ -99,7 +98,6 @@ export default function AlertsScreen() {
         )}
       </View>
 
-      {/* Summary Row */}
       {!offline && (
         <View style={styles.summaryRow}>
           {[
@@ -119,7 +117,6 @@ export default function AlertsScreen() {
         </View>
       )}
 
-      {/* Severity Filter */}
       <View style={styles.filterRow}>
         {SEVERITY_FILTERS.map(f => {
           const active = filter === f.key;
@@ -134,7 +131,6 @@ export default function AlertsScreen() {
         })}
       </View>
 
-      {/* Alert List */}
       {offline ? (
         <View style={styles.emptyCard}>
           <Icon name="wifi-off" size={36} color={colors.warning} />

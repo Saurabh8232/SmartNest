@@ -4,11 +4,7 @@ import { LayoutChangeEvent, StyleSheet, View } from 'react-native';
 interface Point { timestamp: string; value: number; }
 interface Props { data: readonly Point[]; color?: string; height?: number; width?: number; }
 
-// FIX (Issue 2 — History freeze): Cap the number of rendered data points.
-// For 7-day data the backend can return 1000+ minute-level records.
-// Rendering 3 absolutely-positioned Views per point (area bar + segment + dot)
-// means 3000+ layout nodes, which freezes the JS/UI thread.
-// We downsample to at most MAX_CHART_POINTS evenly-spaced points before rendering.
+// Cap rendered points to keep large history ranges responsive.
 const MAX_CHART_POINTS = 60;
 
 function downsampleData(data: readonly Point[], maxPoints: number): readonly Point[] {
@@ -30,8 +26,6 @@ export default function MiniChart({ data: rawData, color = '#00d4ff', height = 5
   };
 
   const containerStyle = [styles.container, { height }];
-
-  // Apply downsampling before any rendering work.
   const data = downsampleData(rawData, MAX_CHART_POINTS);
 
   if (!data || data.length < 2 || width === 0) {
@@ -40,10 +34,7 @@ export default function MiniChart({ data: rawData, color = '#00d4ff', height = 5
 
   const values = data.map(d => d.value);
 
-  // FIX (Issue 2 — History freeze): Replace Math.min(...values) / Math.max(...values)
-  // which use the spread operator. With large arrays the spread causes a
-  // "Maximum call stack size exceeded" RangeError in the JS engine.
-  // Use Array.reduce instead — it iterates without touching the call stack.
+  // Avoid spreading large arrays in the JS engine.
   const min = values.reduce((a, b) => (b < a ? b : a), Infinity);
   const max = values.reduce((a, b) => (b > a ? b : a), -Infinity);
   const range = max - min || 1;
@@ -55,7 +46,7 @@ export default function MiniChart({ data: rawData, color = '#00d4ff', height = 5
     y: pad + ((max - v) / range) * (h - pad * 2),
   }));
 
-  // Build line segments: each segment is a rotated View from center of A to center of B
+  // Each segment is a rotated View between adjacent points.
   const segments: Array<{ cx: number; cy: number; length: number; angle: number }> = [];
   for (let i = 0; i < points.length - 1; i++) {
     const a = points[i];
