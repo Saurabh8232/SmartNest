@@ -1,22 +1,25 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Alert, ScrollView, StyleSheet, Text,
+  ScrollView, StyleSheet, Text,
   TouchableOpacity, View, useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
-import { getHistory, HistoryData, EnergyRecord } from '../api/historyApi';
+import { getHistory, HistoryData, EnergyRecord, HistoryDateRange } from '../api/historyApi';
+import DateRangePicker from '../components/DateRangePicker';
 import MiniChart from '../components/MiniChart';
 import colors from '../constants/colors';
 
-type Period = 'today' | 'last7days' | 'last30days';
+type PresetPeriod = 'today' | 'last7days' | 'last30days';
+type Period = PresetPeriod | 'custom';
 type Tab = 'energy';
 
-const PERIODS: { key: Period; label: string }[] = [
+const PERIODS: { key: PresetPeriod; label: string }[] = [
   { key: 'today', label: 'Today' },
   { key: 'last7days', label: '7 Days' },
   { key: 'last30days', label: '30 Days' },
 ];
+const MINIMUM_HISTORY_DATE = new Date(2000, 0, 1);
 
 const TABS: { key: Tab; label: string; icon: string; color: string }[] = [
   { key: 'energy', label: 'Energy', icon: 'battery-charging', color: colors.success },
@@ -31,6 +34,7 @@ const DEFAULT_DATA: HistoryData = {
 function periodLabel(p: Period) {
   if (p === 'today') return 'Last 24 hours';
   if (p === 'last7days') return 'Last 7 days';
+  if (p === 'custom') return 'Custom range';
   return 'Last 30 days';
 }
 
@@ -54,11 +58,15 @@ export default function HistoryScreen() {
   const [offline, setOffline] = useState(false);
   const [loading, setLoading] = useState(true);
   const [errorText, setErrorText] = useState('');
+  const [customRange, setCustomRange] = useState<HistoryDateRange | null>(null);
+  const [datePickerOpenSignal, setDatePickerOpenSignal] = useState(0);
 
   const abortRef = useRef<AbortController | null>(null);
   const requestIdRef = useRef(0);
 
   const load = useCallback(async () => {
+    if (period === 'custom' && !customRange) return;
+
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
@@ -70,7 +78,7 @@ export default function HistoryScreen() {
       setOffline(false);
       setErrorText('');
       setLoading(true);
-      const nextData = await getHistory(period, controller.signal);
+      const nextData = await getHistory(period, controller.signal, customRange ?? undefined);
       if (requestIdRef.current !== requestId) return;
       setData(nextData);
     } catch (error) {
@@ -83,7 +91,7 @@ export default function HistoryScreen() {
       if (requestIdRef.current !== requestId) return;
       setLoading(false);
     }
-  }, [period]);
+  }, [customRange, period]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -97,6 +105,12 @@ export default function HistoryScreen() {
   }));
 
   const hasData = trend.length > 0;
+  const maximumHistoryDate = new Date();
+
+  const handleCustomApply = useCallback((fromDate: Date, toDate: Date) => {
+    setCustomRange({ fromDate, toDate });
+    setPeriod('custom');
+  }, []);
 
   return (
     <ScrollView
@@ -135,13 +149,23 @@ export default function HistoryScreen() {
           );
         })}
         <TouchableOpacity
-          onPress={() => Alert.alert('Custom Range', 'Custom date range coming soon.')}
+          onPress={() => setDatePickerOpenSignal(value => value + 1)}
           style={[styles.periodBtn, styles.customPeriodBtn]}
         >
           <Icon name="calendar" size={11} color={colors.mutedForeground} />
           <Text style={[styles.periodText, { color: colors.mutedForeground }]}>Custom</Text>
         </TouchableOpacity>
       </View>
+
+      <DateRangePicker
+        fromDate={customRange?.fromDate ?? null}
+        toDate={customRange?.toDate ?? null}
+        minimumDate={MINIMUM_HISTORY_DATE}
+        maximumDate={maximumHistoryDate}
+        onApply={handleCustomApply}
+        openSignal={datePickerOpenSignal}
+        showTrigger={false}
+      />
 
       <ScrollView
         ref={tabScrollRef}

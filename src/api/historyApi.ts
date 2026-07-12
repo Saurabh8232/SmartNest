@@ -52,9 +52,15 @@ async function request<T>(
 type BackendFilter = 'today' | '7d' | '30d' | 'custom';
 
 function toBackendFilter(period: string): BackendFilter {
+  if (period === 'custom') return 'custom';
   if (period === 'last7days' || period === '7d') return '7d';
   if (period === 'last30days' || period === '30d') return '30d';
   return 'today';
+}
+
+export interface HistoryDateRange {
+  fromDate: Date;
+  toDate: Date;
 }
 
 interface EnergyHistoryResponse {
@@ -93,17 +99,43 @@ function normalizeHistoryResponse(res: EnergyHistoryResponse, fallbackFilter: st
   };
 }
 
-export async function getHistory(period: string, signal?: AbortSignal): Promise<HistoryData> {
+function formatHistoryDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function buildCustomRangeQuery(range: HistoryDateRange): string {
+  const params = new URLSearchParams({
+    filter: 'custom',
+    fromDate: formatHistoryDate(range.fromDate),
+    toDate: formatHistoryDate(range.toDate),
+  });
+  return params.toString();
+}
+
+export async function getHistory(
+  period: string,
+  signal?: AbortSignal,
+  range?: HistoryDateRange,
+): Promise<HistoryData> {
   const filter = toBackendFilter(period);
   const deviceId = await getDeviceId();
   const encodedDeviceId = encodeURIComponent(deviceId);
 
   // Try the documented route first, then common backend route variants.
-  const paths = [
-    `/api/history/energy${encodedDeviceId}?deviceId=${encodedDeviceId}&filter=${filter}`,
-    `/api/history/energy/${encodedDeviceId}?filter=${filter}`,
-    `/api/history/energy?deviceId=${encodedDeviceId}&filter=${filter}`,
-  ];
+  const paths = filter === 'custom' && range
+    ? [
+        `/api/history/energy${encodedDeviceId}?deviceId=${encodedDeviceId}&${buildCustomRangeQuery(range)}`,
+        `/api/history/energy/${encodedDeviceId}?${buildCustomRangeQuery(range)}`,
+        `/api/history/energy?deviceId=${encodedDeviceId}&${buildCustomRangeQuery(range)}`,
+      ]
+    : [
+        `/api/history/energy${encodedDeviceId}?deviceId=${encodedDeviceId}&filter=${filter}`,
+        `/api/history/energy/${encodedDeviceId}?filter=${filter}`,
+        `/api/history/energy?deviceId=${encodedDeviceId}&filter=${filter}`,
+      ];
   let lastError: unknown = null;
 
   for (const path of paths) {

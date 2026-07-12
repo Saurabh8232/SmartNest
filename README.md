@@ -25,7 +25,7 @@ SmartNest is a React Native IoT control application for monitoring and controlli
 - Main Board controller for relay state, relay locking, lighting group control, reboot, and telemetry.
 - Digital Board controller for digital relay control, reboot, and electrical metrics.
 - AC Controller for power, temperature up/down, quick temperature presets, fan speed, and AC telemetry.
-- History module for energy records, Today / 7 Days / 30 Days filters, custom range placeholder, request cancellation, and downsampled charts.
+- History module for energy records, Today / 7 Days / 30 Days filters, a reusable Custom date range picker, request cancellation, and downsampled charts.
 - Account module with profile/session state, diagnostics items, sign out, and a dedicated About page.
 - About page with project description, team members, roles, LinkedIn links, technology stack, organization details, and copyright.
 - Real-time connection toast for device online/offline transitions.
@@ -52,6 +52,15 @@ Expected backend endpoints include:
 - Device command and snapshot endpoints under `/api/device/:deviceId/...`
 - Dashboard trend endpoint: `GET /dashboard`
 - History endpoint variants under `/api/history/energy`
+
+History filters use the existing `filter` query parameter:
+
+```text
+GET /api/history/energy?deviceId=SmartNest_001&filter=today
+GET /api/history/energy?deviceId=SmartNest_001&filter=7d
+GET /api/history/energy?deviceId=SmartNest_001&filter=30d
+GET /api/history/energy?deviceId=SmartNest_001&filter=custom&fromDate=YYYY-MM-DD&toDate=YYYY-MM-DD
+```
 
 The current device ID is configured in [src/config/communication.ts](src/config/communication.ts).
 
@@ -99,6 +108,7 @@ The production backend should provide:
 - Protected REST endpoints that accept `Authorization: Bearer <token>`.
 - Device command endpoints for relay, board, global, and AC controls.
 - History data with `filter`, `summary`, and `records`.
+- Custom history filtering with `filter=custom`, `fromDate=YYYY-MM-DD`, and `toDate=YYYY-MM-DD`.
 - Socket.IO events for live sensors, relays, status, slave board state, command acknowledgements, alerts, and device connection status.
 - Device payloads compatible with [src/types/communication.ts](src/types/communication.ts).
 
@@ -233,6 +243,7 @@ SmartNest/
 |   |   |-- AuthContext.tsx
 |   |   `-- authService.ts
 |   |-- components/
+|   |   |-- DateRangePicker/
 |   |   |-- MetricCard.tsx
 |   |   |-- MiniChart.tsx
 |   |   |-- RelayToggle.tsx
@@ -266,7 +277,8 @@ SmartNest/
 - [src/config/communication.ts](src/config/communication.ts): REST host, Socket.IO host, and device ID.
 - [src/authentication/authService.ts](src/authentication/authService.ts): login, token refresh, logout, and authenticated fetch helper.
 - [src/socket/liveCommunication.ts](src/socket/liveCommunication.ts): live state composition, subscriptions, and device command helpers.
-- [src/api/historyApi.ts](src/api/historyApi.ts): energy history REST loader and response normalization.
+- [src/api/historyApi.ts](src/api/historyApi.ts): energy history REST loader, custom date range query support, and response normalization.
+- [src/components/DateRangePicker](src/components/DateRangePicker): reusable custom date range picker used by the History module.
 - [mock-server/server.js](mock-server/server.js): local REST and Socket.IO simulator.
 
 ## Quality Commands
@@ -291,7 +303,7 @@ npm test
 
 ## Known Limitations
 
-- The History custom range control is currently a placeholder and shows a "coming soon" alert.
+- The History custom range filter requires backend support for `filter=custom&fromDate=YYYY-MM-DD&toDate=YYYY-MM-DD`; otherwise the existing History error state is shown.
 - The current History UI displays energy records only.
 - AC state is inferred from local commands and live sensor current because the backend does not broadcast full AC state over Socket.IO.
 - Some dashboard/alert/device socket channels are stubbed until backend events are fully documented.
