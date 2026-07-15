@@ -1,3 +1,4 @@
+// Metro bundler configuration.
 const { getDefaultConfig, mergeConfig } = require('@react-native/metro-config');
 
 /**

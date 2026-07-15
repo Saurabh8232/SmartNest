@@ -26,7 +26,7 @@ import {
 type Unsubscribe = () => void;
 const DEVICE_API_PATH = `/api/devices/${DEVICE_ID}`;
 
-// Backend relay payloads use numbers; names are local labels.
+// ── Relay name maps (backend sends numbers only, names are local) ─
 const MAIN_RELAY_NAMES: Record<number, string> = {
   1: 'Light 1',
   2: 'Light 2',
@@ -46,7 +46,11 @@ subscribeToSession(session => {
 
 socketManager.setAuthToken(getAccessToken());
 
-async function apiPost(path: string, body?: object): Promise<{ cmd_id?: string }> {
+// ── REST helper ──────────────────────────────────────────────────
+async function apiPost(
+  path: string,
+  body?: object,
+): Promise<{ cmd_id?: string }> {
   const fetchOpts: RequestInit = {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -56,9 +60,12 @@ async function apiPost(path: string, body?: object): Promise<{ cmd_id?: string }
   let res = await authFetch(`${REST_BASE_URL}${path}`, fetchOpts);
 
   if (!res.ok) {
-    // Backend can return 404 for stale tokens; refresh once before failing.
+    // FIX (Issue 1): This backend returns 404 (not 401) for expired or invalid.
+
     if (res.status === 404 || res.status === 401) {
       const session = getCurrentSession();
+
+      // Demo session or no token at all — cannot recover, must log in for real.
 
       if (!session?.accessToken || session.isDemo) {
         clearSession().catch(() => {});
@@ -67,13 +74,20 @@ async function apiPost(path: string, body?: object): Promise<{ cmd_id?: string }
         );
       }
 
+      // Real session with a refresh token — try to get a new access token and retry.
+
       if (session.refreshToken) {
         const refreshed = await refreshAccessToken();
         if (refreshed?.accessToken) {
-          const retryRes = await authFetch(`${REST_BASE_URL}${path}`, fetchOpts);
+          const retryRes = await authFetch(
+            `${REST_BASE_URL}${path}`,
+            fetchOpts,
+          );
           if (retryRes.ok) return retryRes.json();
         }
       }
+
+      // Refresh failed or retry still rejected — session is fully stale.
 
       clearSession().catch(() => {});
       throw new Error(
@@ -92,7 +106,10 @@ async function apiPost(path: string, body?: object): Promise<{ cmd_id?: string }
   return res.json();
 }
 
-// REST snapshot fills initial state before socket updates.
+// ── REST snapshot (initial hydration before live socket data arrives) ────
+// The backend only pushes device:relays / device:sensors over the socket when
+// real MQTT data changes — it does NOT send a snapshot on `subscribe`.
+
 interface RestRelaysResponse {
   success: boolean;
   data: {
@@ -118,11 +135,18 @@ function normalizeRestRelays(data: RestRelaysResponse['data']): RelaysPayload {
   };
 }
 
-// Share the initial relays request across subscribers.
+// FIX (Issue 3 — Performance): Deduplicate fetchInitialRelays so that multiple
+// screens subscribing at the same time (subscribeToDashboard, subscribeToMainBoard,
+// subscribeToDigitalBoard) only issue a SINGLE network request rather than three.
+
 let _relaysFetchPromise: Promise<RelaysPayload | null> | null = null;
 
 async function fetchInitialRelays(): Promise<RelaysPayload | null> {
+  // If we already have live relay data, skip the REST fetch entirely.
+
   if (latestRelays) return latestRelays;
+
+  // If a fetch is already in-flight, share its promise with all callers.
 
   if (_relaysFetchPromise) return _relaysFetchPromise;
 
@@ -134,9 +158,13 @@ async function fetchInitialRelays(): Promise<RelaysPayload | null> {
       if (!json?.data) return null;
       return normalizeRestRelays(json.data);
     } catch {
+      // Offline or backend unreachable — the socket will populate state once it connects.
+
       return null;
     }
   })();
+
+  // Clear the shared promise after it settles so a later retry can re-fetch if needed.
 
   _relaysFetchPromise.finally(() => {
     _relaysFetchPromise = null;
@@ -144,6 +172,8 @@ async function fetchInitialRelays(): Promise<RelaysPayload | null> {
 
   return _relaysFetchPromise;
 }
+
+// ── In-memory state (combines events for DashboardData)
 
 let latestSensors: SensorsPayload | null = null;
 let latestRelays: RelaysPayload | null = null;
@@ -154,7 +184,13 @@ const unlockAllListeners = new Set<() => void>();
 
 const dashboardListeners = new Set<(d: DashboardData) => void>();
 
-// Retained MQTT messages can look fresh; require recent live events.
+// ── Staleness watchdog ─────────────────────────────────────────────
+// The backend only pushes device:* socket events when it actually receives an
+// MQTT message. Several MQTT topics (live/status, live/relays, live/slaves)
+// are published with `retain: true`, so a broker can replay an OLD cached
+// message the moment the backend reconnects — even if the physical device is
+// offline.
+
 const STALE_THRESHOLD_MS = 90_000; // 3x the ~30s firmware heartbeat interval
 let lastLiveUpdateAt: number | null = null;
 
@@ -167,13 +203,18 @@ function isLiveDataStale(): boolean {
   return Date.now() - lastLiveUpdateAt > STALE_THRESHOLD_MS;
 }
 
-// Track live data even when dashboard is not mounted.
+// Track live-data arrival globally (independent of which screens are mounted)
+// so staleness is detected even if the dashboard listener isn't active.
+
 socketManager.on<SensorsPayload>(SOCKET_EVENTS.deviceSensors, markLiveUpdate);
 socketManager.on<RelaysPayload>(SOCKET_EVENTS.deviceRelays, markLiveUpdate);
 socketManager.on<StatusPayload>(SOCKET_EVENTS.deviceStatus, markLiveUpdate);
 socketManager.on<SlavesPayload>(SOCKET_EVENTS.deviceSlaves, markLiveUpdate);
 
-// Recompute stale status while the device is silent.
+// Periodically re-evaluate staleness even when no new socket event arrives —
+// a silent/dead device produces NO events at all, so without this timer the
+// UI would keep showing the last-known "online" state forever.
+
 setInterval(() => {
   if (dashboardListeners.size === 0) return;
   notifyDashboardListeners();
@@ -193,7 +234,9 @@ function buildDashboard(): DashboardData | null {
     latestSensors.energy.digitalKwh +
     latestSensors.energy.acKwh;
 
-  // Gate reported online status with the staleness watchdog.
+  // systemOnline: derived from device:slaves (authoritative for PZEM/Digital connectivity).
+  // Falls back to whether we have received any status heartbeat at all.
+
   const reportedOnline = latestSlaves
     ? latestSlaves.pzem.online
     : latestStatus !== null;
@@ -218,7 +261,10 @@ function buildDashboard(): DashboardData | null {
   };
 }
 
-// Batch socket bursts into one dashboard notification.
+// FIX (Issue 3 — Performance): Batch rapid socket events so that multiple events
+// arriving within the same JS tick (sensors + relays + status at once) only trigger
+// ONE dashboard rebuild + listener notification instead of one per event.
+
 let _dashboardNotifyScheduled = false;
 
 function notifyDashboardListeners(): void {
@@ -232,45 +278,76 @@ function notifyDashboardListeners(): void {
   }, 0);
 }
 
-export function subscribeToSensors(listener: (s: SensorsPayload) => void): Unsubscribe {
-  return socketManager.on<SensorsPayload>(SOCKET_EVENTS.deviceSensors, listener);
+// ── Raw event subscriptions
+
+export function subscribeToSensors(
+  listener: (s: SensorsPayload) => void,
+): Unsubscribe {
+  return socketManager.on<SensorsPayload>(
+    SOCKET_EVENTS.deviceSensors,
+    listener,
+  );
 }
 
-export function subscribeToRelays(listener: (r: RelaysPayload) => void): Unsubscribe {
+export function subscribeToRelays(
+  listener: (r: RelaysPayload) => void,
+): Unsubscribe {
   return socketManager.on<RelaysPayload>(SOCKET_EVENTS.deviceRelays, listener);
 }
 
-export function subscribeToStatus(listener: (s: StatusPayload) => void): Unsubscribe {
+export function subscribeToStatus(
+  listener: (s: StatusPayload) => void,
+): Unsubscribe {
   return socketManager.on<StatusPayload>(SOCKET_EVENTS.deviceStatus, listener);
 }
 
-export function subscribeToSlaves(listener: (s: SlavesPayload) => void): Unsubscribe {
+export function subscribeToSlaves(
+  listener: (s: SlavesPayload) => void,
+): Unsubscribe {
   return socketManager.on<SlavesPayload>(SOCKET_EVENTS.deviceSlaves, listener);
 }
 
-export function subscribeToCommandAck(listener: (ack: CommandAck) => void): Unsubscribe {
+export function subscribeToCommandAck(
+  listener: (ack: CommandAck) => void,
+): Unsubscribe {
   return socketManager.on<CommandAck>(SOCKET_EVENTS.commandAck, listener);
 }
 
-export function subscribeToDashboard(listener: (data: DashboardData) => void): Unsubscribe {
+// ── Dashboard (composed from sensors + relays + status + slaves) ─
+
+export function subscribeToDashboard(
+  listener: (data: DashboardData) => void,
+): Unsubscribe {
   dashboardListeners.add(listener);
 
-  const removeSensors = socketManager.on<SensorsPayload>(SOCKET_EVENTS.deviceSensors, s => {
-    latestSensors = s;
-    notifyDashboardListeners();
-  });
-  const removeRelays = socketManager.on<RelaysPayload>(SOCKET_EVENTS.deviceRelays, r => {
-    latestRelays = r;
-    notifyDashboardListeners();
-  });
-  const removeStatus = socketManager.on<StatusPayload>(SOCKET_EVENTS.deviceStatus, s => {
-    latestStatus = s;
-    notifyDashboardListeners();
-  });
-  const removeSlaves = socketManager.on<SlavesPayload>(SOCKET_EVENTS.deviceSlaves, s => {
-    latestSlaves = s;
-    notifyDashboardListeners();
-  });
+  const removeSensors = socketManager.on<SensorsPayload>(
+    SOCKET_EVENTS.deviceSensors,
+    s => {
+      latestSensors = s;
+      notifyDashboardListeners();
+    },
+  );
+  const removeRelays = socketManager.on<RelaysPayload>(
+    SOCKET_EVENTS.deviceRelays,
+    r => {
+      latestRelays = r;
+      notifyDashboardListeners();
+    },
+  );
+  const removeStatus = socketManager.on<StatusPayload>(
+    SOCKET_EVENTS.deviceStatus,
+    s => {
+      latestStatus = s;
+      notifyDashboardListeners();
+    },
+  );
+  const removeSlaves = socketManager.on<SlavesPayload>(
+    SOCKET_EVENTS.deviceSlaves,
+    s => {
+      latestSlaves = s;
+      notifyDashboardListeners();
+    },
+  );
 
   if (!latestRelays) {
     fetchInitialRelays().then(relays => {
@@ -292,29 +369,46 @@ export function subscribeToDashboard(listener: (data: DashboardData) => void): U
   };
 }
 
-export function subscribeToDashboardAlerts(listener: (alerts: Alert[]) => void): Unsubscribe {
-  // Placeholder until backend event is documented.
+// ── Dashboard Alerts (stub — no backend event documented)
+
+export function subscribeToDashboardAlerts(
+  listener: (alerts: Alert[]) => void,
+): Unsubscribe {
+  // No backend socket event currently documents this. Listener will never fire.
+
   return socketManager.on<Alert[]>('dashboard-alerts:update', listener);
 }
 
-export function subscribeToAlerts(listener: (alerts: Alert[]) => void): Unsubscribe {
+export function subscribeToAlerts(
+  listener: (alerts: Alert[]) => void,
+): Unsubscribe {
   return socketManager.on<Alert[]>('dashboard-alerts:update', listener);
 }
 
 export function resolveAlert(_alertId: string): void {}
 
-export function subscribeToDevices(listener: (devices: IoTDevice[]) => void): Unsubscribe {
-  // Placeholder until backend event is documented.
+// ── Devices (stub — no backend socket event documented)
+
+export function subscribeToDevices(
+  listener: (devices: IoTDevice[]) => void,
+): Unsubscribe {
+  // No backend socket event currently documents this. Listener will never fire.
   return socketManager.on<IoTDevice[]>('devices:update', listener);
 }
 
-export function subscribeToMainBoard(listener: (status: MainBoardStatus) => void): Unsubscribe {
+// ── Main Board
+
+export function subscribeToMainBoard(
+  listener: (status: MainBoardStatus) => void,
+): Unsubscribe {
   let latestRelaysLocal: RelaysPayload | null = latestRelays;
   let latestSensorsLocal: SensorsPayload | null = latestSensors;
 
   function emit() {
     if (!latestRelaysLocal) return;
-    const mainItems = latestRelaysLocal.items.filter(r => r.relay >= 1 && r.relay <= 6);
+    const mainItems = latestRelaysLocal.items.filter(
+      r => r.relay >= 1 && r.relay <= 6,
+    );
     listener({
       masterLockEnabled: latestRelaysLocal.masterLock,
       shutdownEnabled: false,
@@ -344,24 +438,49 @@ export function subscribeToMainBoard(listener: (status: MainBoardStatus) => void
     emit();
   }
 
-  const removeRelays  = socketManager.on<RelaysPayload>(SOCKET_EVENTS.deviceRelays,  r => { latestRelaysLocal  = r; latestRelays = r; emit(); });
-  const removeSensors = socketManager.on<SensorsPayload>(SOCKET_EVENTS.deviceSensors, s => { latestSensorsLocal = s; latestSensors = s; emit(); });
+  const removeRelays = socketManager.on<RelaysPayload>(
+    SOCKET_EVENTS.deviceRelays,
+    r => {
+      latestRelaysLocal = r;
+      latestRelays = r;
+      emit();
+    },
+  );
+  const removeSensors = socketManager.on<SensorsPayload>(
+    SOCKET_EVENTS.deviceSensors,
+    s => {
+      latestSensorsLocal = s;
+      latestSensors = s;
+      emit();
+    },
+  );
 
   socketManager.connect();
-  return () => { removeRelays(); removeSensors(); };
+  return () => {
+    removeRelays();
+    removeSensors();
+  };
 }
 
 export function subscribeToShutdownAll(listener: () => void): Unsubscribe {
   shutdownAllListeners.add(listener);
-  return () => { shutdownAllListeners.delete(listener); };
+  return () => {
+    shutdownAllListeners.delete(listener);
+  };
 }
 
 export function subscribeToUnlockAll(listener: () => void): Unsubscribe {
   unlockAllListeners.add(listener);
-  return () => { unlockAllListeners.delete(listener); };
+  return () => {
+    unlockAllListeners.delete(listener);
+  };
 }
 
-export function subscribeToDigitalBoard(listener: (status: DigitalBoardStatus) => void): Unsubscribe {
+// ── Digital Board
+
+export function subscribeToDigitalBoard(
+  listener: (status: DigitalBoardStatus) => void,
+): Unsubscribe {
   let latestRelaysLocal: RelaysPayload | null = latestRelays;
   let latestSensorsLocal: SensorsPayload | null = latestSensors;
 
@@ -373,16 +492,23 @@ export function subscribeToDigitalBoard(listener: (status: DigitalBoardStatus) =
       digitalCurrent: latestSensorsLocal?.current.digital ?? 0,
       digitalEnergyKwh: latestSensorsLocal?.energy.digitalKwh ?? 0,
       relays: digitalItem
-        ? [{
-            id: 'd7',
-            name: DIGITAL_RELAY_NAMES[7] ?? 'Digital Relay',
-            isOn: digitalItem.state,
-            current: latestSensorsLocal?.current.digital ?? 0,
-            power: +((latestSensorsLocal?.current.digital ?? 0) * (latestSensorsLocal?.voltage ?? 220)).toFixed(0),
-            status: 'normal' as const,
-            switchState: latestRelaysLocal.digitalSwitch ? 'pressed' : 'released',
-            locked: digitalItem.locked,
-          }]
+        ? [
+            {
+              id: 'd7',
+              name: DIGITAL_RELAY_NAMES[7] ?? 'Digital Relay',
+              isOn: digitalItem.state,
+              current: latestSensorsLocal?.current.digital ?? 0,
+              power: +(
+                (latestSensorsLocal?.current.digital ?? 0) *
+                (latestSensorsLocal?.voltage ?? 220)
+              ).toFixed(0),
+              status: 'normal' as const,
+              switchState: latestRelaysLocal.digitalSwitch
+                ? 'pressed'
+                : 'released',
+              locked: digitalItem.locked,
+            },
+          ]
         : [],
     });
   }
@@ -399,19 +525,41 @@ export function subscribeToDigitalBoard(listener: (status: DigitalBoardStatus) =
     emit();
   }
 
-  const removeRelays  = socketManager.on<RelaysPayload>(SOCKET_EVENTS.deviceRelays,  r => { latestRelaysLocal  = r; latestRelays = r; emit(); });
-  const removeSensors = socketManager.on<SensorsPayload>(SOCKET_EVENTS.deviceSensors, s => { latestSensorsLocal = s; latestSensors = s; emit(); });
+  const removeRelays = socketManager.on<RelaysPayload>(
+    SOCKET_EVENTS.deviceRelays,
+    r => {
+      latestRelaysLocal = r;
+      latestRelays = r;
+      emit();
+    },
+  );
+  const removeSensors = socketManager.on<SensorsPayload>(
+    SOCKET_EVENTS.deviceSensors,
+    s => {
+      latestSensorsLocal = s;
+      latestSensors = s;
+      emit();
+    },
+  );
 
   socketManager.connect();
-  return () => { removeRelays(); removeSensors(); };
+  return () => {
+    removeRelays();
+    removeSensors();
+  };
 }
 
-// AC state is inferred from local commands and live sensor current.
+// ── AC
+// AC state (power, temperature, fan) is not broadcast via socket.
+// We track what was last sent locally and infer power from current.ac > 0.
+
 let _acTemp = 24;
 let _acFan: AcStatus['fanSpeed'] = 'auto';
 let _acSwing = false;
 
-export function subscribeToAc(listener: (status: AcStatus) => void): Unsubscribe {
+export function subscribeToAc(
+  listener: (status: AcStatus) => void,
+): Unsubscribe {
   return socketManager.on<SensorsPayload>(SOCKET_EVENTS.deviceSensors, s => {
     listener({
       isOn: s.current.ac > 0,
@@ -427,19 +575,32 @@ export function subscribeToAc(listener: (status: AcStatus) => void): Unsubscribe
   });
 }
 
+// ── Connection
+
 export function subscribeToConnection(
   onConnect: () => void,
   onDisconnect: () => void,
 ): Unsubscribe {
-  const removeConnect    = socketManager.on(SOCKET_EVENTS.connect,      onConnect);
-  const removeDisconnect = socketManager.on(SOCKET_EVENTS.disconnect,   onDisconnect);
-  const removeError      = socketManager.on(SOCKET_EVENTS.connectError, onDisconnect);
-  return () => { removeConnect(); removeDisconnect(); removeError(); };
+  const removeConnect = socketManager.on(SOCKET_EVENTS.connect, onConnect);
+  const removeDisconnect = socketManager.on(
+    SOCKET_EVENTS.disconnect,
+    onDisconnect,
+  );
+  const removeError = socketManager.on(
+    SOCKET_EVENTS.connectError,
+    onDisconnect,
+  );
+  return () => {
+    removeConnect();
+    removeDisconnect();
+    removeError();
+  };
 }
 
+// ── Device Connection Status (device:connection) ──────────────────
 // The backend emits this event immediately on subscribe (current state) and
 // again only when the device transitions between online and offline.
-// Payload mirrors the backend spec: deviceId, online, lastSeen (ISO or null).
+
 export interface DeviceConnectionPayload {
   deviceId: string;
   online: boolean;
@@ -449,24 +610,41 @@ export interface DeviceConnectionPayload {
 export function subscribeToDeviceConnection(
   callback: (payload: DeviceConnectionPayload) => void,
 ): Unsubscribe {
-  return socketManager.on<DeviceConnectionPayload>(SOCKET_EVENTS.deviceConnection, callback);
+  return socketManager.on<DeviceConnectionPayload>(
+    SOCKET_EVENTS.deviceConnection,
+    callback,
+  );
 }
 
-export async function controlMainRelay(relayId: string, action: 'on' | 'off'): Promise<{ cmd_id?: string }> {
+// ── REST Commands — Main Board
+
+export async function controlMainRelay(
+  relayId: string,
+  action: 'on' | 'off',
+): Promise<{ cmd_id?: string }> {
   const relayNo = parseInt(relayId.replace('r', ''), 10);
-  return apiPost(`${DEVICE_API_PATH}/relays/${relayNo}`, { state: action === 'on' });
+  return apiPost(`${DEVICE_API_PATH}/relays/${relayNo}`, {
+    state: action === 'on',
+  });
 }
 
-export async function controlMainLightingGroup(action: 'on' | 'off'): Promise<{ cmd_id?: string }> {
+export async function controlMainLightingGroup(
+  action: 'on' | 'off',
+): Promise<{ cmd_id?: string }> {
   return apiPost(`${DEVICE_API_PATH}/lights`, { state: action === 'on' });
 }
 
-export async function lockMainRelay(relayId: string, locked: boolean): Promise<{ cmd_id?: string }> {
+export async function lockMainRelay(
+  relayId: string,
+  locked: boolean,
+): Promise<{ cmd_id?: string }> {
   const relayNo = parseInt(relayId.replace('r', ''), 10);
   return apiPost(`${DEVICE_API_PATH}/relays/${relayNo}/lock`, { locked });
 }
 
-export async function setMasterShutdown(_enabled: boolean): Promise<{ cmd_id?: string }> {
+export async function setMasterShutdown(
+  _enabled: boolean,
+): Promise<{ cmd_id?: string }> {
   return apiPost(`${DEVICE_API_PATH}/relays/off`);
 }
 
@@ -474,13 +652,23 @@ export async function rebootMainBoard(): Promise<{ cmd_id?: string }> {
   return apiPost(`${DEVICE_API_PATH}/system/reboot`);
 }
 
-export async function controlDigitalRelay(_relayId: string, action: 'on' | 'off'): Promise<{ cmd_id?: string }> {
+// ── REST Commands — Digital Board
+
+export async function controlDigitalRelay(
+  _relayId: string,
+  action: 'on' | 'off',
+): Promise<{ cmd_id?: string }> {
   return apiPost(`${DEVICE_API_PATH}/relays/7`, { state: action === 'on' });
 }
 
-export async function lockDigitalRelay(_relayId: string, locked: boolean): Promise<{ cmd_id?: string }> {
+export async function lockDigitalRelay(
+  _relayId: string,
+  locked: boolean,
+): Promise<{ cmd_id?: string }> {
   return apiPost(`${DEVICE_API_PATH}/relays/7/lock`, { locked });
 }
+
+// ── REST Commands — Global
 
 export async function masterUnlockAll(): Promise<{ cmd_id?: string }> {
   const result = await apiPost(`${DEVICE_API_PATH}/relays/unlock`);
@@ -488,7 +676,9 @@ export async function masterUnlockAll(): Promise<{ cmd_id?: string }> {
   return result;
 }
 
-export async function masterShutdownAll(_enabled: boolean): Promise<{ cmd_id?: string }> {
+export async function masterShutdownAll(
+  _enabled: boolean,
+): Promise<{ cmd_id?: string }> {
   const result = await apiPost(`${DEVICE_API_PATH}/relays/off`);
   shutdownAllListeners.forEach(listener => listener());
   return result;
@@ -503,7 +693,11 @@ export async function rebootSystem(): Promise<{ cmd_id?: string }> {
   return apiPost(`${DEVICE_API_PATH}/system/reboot`);
 }
 
-export async function sendAcCommand(action: string, value?: unknown): Promise<void> {
+// ── REST Commands — AC
+export async function sendAcCommand(
+  action: string,
+  value?: unknown,
+): Promise<void> {
   if (action === 'power_on') {
     await apiPost(`${DEVICE_API_PATH}/ac`, { power: true });
   } else if (action === 'power_off') {
@@ -523,6 +717,7 @@ export async function sendAcCommand(action: string, value?: unknown): Promise<vo
   }
 }
 
+// ── Re-exports for screens that import types from here ───────────
 export type {
   AcStatus,
   Alert,

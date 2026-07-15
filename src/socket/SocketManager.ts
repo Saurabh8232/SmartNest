@@ -1,3 +1,4 @@
+// Shared Socket.IO connection manager.
 import { io, Socket } from 'socket.io-client';
 import { DEVICE_ID, SOCKET_URL } from '../config/communication';
 

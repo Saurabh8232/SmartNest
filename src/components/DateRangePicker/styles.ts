@@ -1,16 +1,15 @@
+// Shared styles for the date range picker.
 import { StyleSheet } from 'react-native';
 import colors from '../../constants/colors';
 
-// ── Shared constants ──────────────────────────────────────────────
 export const CELL_HEIGHT = 38;
-export const PILL_SIZE   = 32;
-export const BAR_HEIGHT  = 26;
-export const BAR_TOP     = (CELL_HEIGHT - BAR_HEIGHT) / 2;
-export const RANGE_BG    = 'rgba(108,99,255,0.18)';
-export const ACCENT      = '#6c63ff';
-export const TODAY_DOT   = '#00d4ff';
+export const PILL_SIZE = 32;
+export const BAR_HEIGHT = 26;
+export const BAR_TOP = (CELL_HEIGHT - BAR_HEIGHT) / 2;
+export const RANGE_BG = 'rgba(108,99,255,0.18)';
+export const ACCENT = '#6c63ff';
+export const TODAY_DOT = '#00d4ff';
 
-// ── DayCell styles ────────────────────────────────────────────────
 export const dayCellStyles = StyleSheet.create({
   cellWrapper: {
     width: '14.2857%',
@@ -75,7 +74,6 @@ export const dayCellStyles = StyleSheet.create({
   },
 });
 
-// ── CalendarHeader styles ─────────────────────────────────────────
 export const headerStyles = StyleSheet.create({
   row: {
     flexDirection: 'row',
@@ -103,7 +101,6 @@ export const headerStyles = StyleSheet.create({
   },
 });
 
-// ── Calendar styles ───────────────────────────────────────────────
 export const calendarStyles = StyleSheet.create({
   root: {
     overflow: 'hidden',
@@ -124,13 +121,12 @@ export const calendarStyles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
   },
-  slideContainer: {
-    flexDirection: 'row',
-    overflow: 'hidden',
+  emptyCell: {
+    width: '14.2857%',
+    height: CELL_HEIGHT,
   },
 });
 
-// ── DateInput styles ──────────────────────────────────────────────
 export const inputStyles = StyleSheet.create({
   box: {
     flex: 1,
@@ -170,27 +166,18 @@ export const inputStyles = StyleSheet.create({
   },
 });
 
-// ── DateRangePicker (main popup) styles ───────────────────────────
 export const pickerStyles = StyleSheet.create({
-  // Inline trigger row (always visible on screen)
   triggerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
-  arrowIcon: {
-    color: colors.mutedForeground,
-  },
-
-  // Modal backdrop
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.45)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-
-  // Popup card
   popup: {
     backgroundColor: colors.card,
     borderRadius: 18,
@@ -203,25 +190,17 @@ export const pickerStyles = StyleSheet.create({
     shadowRadius: 24,
     elevation: 16,
   },
-
-  // Top FROM → TO row inside popup
   popupInputRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     marginBottom: 16,
   },
-  arrowSeparator: {
-    color: colors.mutedForeground,
-  },
-
   divider: {
     height: 1,
     backgroundColor: colors.border,
     marginVertical: 12,
   },
-
-  // Bottom action buttons
   btnRow: {
     flexDirection: 'row',
     gap: 10,

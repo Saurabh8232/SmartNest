@@ -16,7 +16,7 @@ SmartNest is a React Native IoT control application for monitoring and controlli
 
 ## Current Features
 
-- Login system with session persistence, token refresh, demo fallback for unavailable local auth backends, and loading-state protection against duplicate login requests.
+- Backend-verified login and registration with session persistence, token refresh support, cached profile display, and loading-state protection against duplicate requests.
 - SmartNest branding on the login and About screens using the app logo asset.
 - Safe-area aware bottom navigation for gesture navigation and Android 3-button navigation devices.
 - Horizontal swipe navigation between the four primary tabs: Home, Devices, History, and Account.
@@ -26,7 +26,7 @@ SmartNest is a React Native IoT control application for monitoring and controlli
 - Digital Board controller for digital relay control, reboot, and electrical metrics.
 - AC Controller for power, temperature up/down, quick temperature presets, fan speed, and AC telemetry.
 - History module for energy records, Today / 7 Days / 30 Days filters, a reusable Custom date range picker, request cancellation, and downsampled charts.
-- Account module with profile/session state, diagnostics items, sign out, and a dedicated About page.
+- Account module with backend-refreshed profile state, offline cached Name/Email fallback, diagnostics items, sign out, and a dedicated About page.
 - About page with project description, team members, roles, LinkedIn links, technology stack, organization details, and copyright.
 - Real-time connection toast for device online/offline transitions.
 
@@ -47,6 +47,8 @@ REST calls are centralized through authentication-aware helpers where required.
 Expected backend endpoints include:
 
 - `POST /api/auth/login`
+- `POST /api/auth/register`
+- `GET /api/auth/profile`
 - `POST /api/auth/refresh`
 - `POST /api/auth/logout`
 - Device command and snapshot endpoints under `/api/device/:deviceId/...`
@@ -63,6 +65,198 @@ GET /api/history/energy?deviceId=SmartNest_001&filter=custom&fromDate=YYYY-MM-DD
 ```
 
 The current device ID is configured in [src/config/communication.ts](src/config/communication.ts).
+
+## Authentication Backend Contract
+
+Authentication must always be verified by the backend. The app never authenticates from cached profile data. Cached data is only used to show Name and Email on the Account page when the backend cannot be reached.
+
+### Register User
+
+```http
+POST /api/auth/register
+Content-Type: application/json
+```
+
+Request body:
+
+```json
+{
+  "name": "Saurabh Yadav",
+  "username": "saurabh123",
+  "email": "saurabh@example.com",
+  "password": "password123"
+}
+```
+
+Successful response:
+
+```json
+{
+  "success": true,
+  "token": "jwt-access-token",
+  "refreshToken": "optional-refresh-token",
+  "user": {
+    "id": 1,
+    "name": "Saurabh Yadav",
+    "username": "saurabh123",
+    "email": "saurabh@example.com"
+  }
+}
+```
+
+### Login User
+
+```http
+POST /api/auth/login
+Content-Type: application/json
+```
+
+Request body:
+
+```json
+{
+  "username": "saurabh123",
+  "password": "password123"
+}
+```
+
+Successful response:
+
+```json
+{
+  "success": true,
+  "token": "jwt-access-token",
+  "refreshToken": "optional-refresh-token",
+  "user": {
+    "id": 1,
+    "name": "Saurabh Yadav",
+    "username": "saurabh123",
+    "email": "saurabh@example.com"
+  }
+}
+```
+
+The app also accepts `accessToken` or `access_token` instead of `token`, and `refresh_token` instead of `refreshToken`.
+
+Invalid login response:
+
+```json
+{
+  "success": false,
+  "message": "Invalid credentials"
+}
+```
+
+Return `401 Unauthorized` for wrong username/password.
+
+### Current Profile
+
+The Account page calls this endpoint whenever it opens.
+
+```http
+GET /api/auth/profile
+Authorization: Bearer <token>
+```
+
+Successful response:
+
+```json
+{
+  "success": true,
+  "user": {
+    "id": 1,
+    "name": "Saurabh Yadav",
+    "username": "saurabh123",
+    "email": "saurabh@example.com"
+  }
+}
+```
+
+The app displays only:
+
+- Name
+- Email
+
+Username is stored in session state but is not displayed on the Account page.
+
+### Refresh Token
+
+If the backend supports refresh tokens:
+
+```http
+POST /api/auth/refresh
+Content-Type: application/json
+```
+
+Request body:
+
+```json
+{
+  "refreshToken": "refresh-token"
+}
+```
+
+Successful response:
+
+```json
+{
+  "success": true,
+  "token": "new-jwt-access-token"
+}
+```
+
+If refresh tokens are not implemented, the app can still work with access tokens, but expired sessions should return `401` so the app can clear the session.
+
+### Logout
+
+```http
+POST /api/auth/logout
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+
+Request body:
+
+```json
+{
+  "refreshToken": "refresh-token"
+}
+```
+
+The app clears local auth state and cached profile after logout. After logout, the user must enter Username and Password again and the backend must verify credentials again.
+
+### Validation Rules
+
+Backend should enforce:
+
+- `name` is required for registration.
+- `username` is required and unique.
+- `email` is required, valid, and unique.
+- `password` is required.
+- Maximum password length is `15` characters.
+- Login accepts only `username` and `password`.
+
+The mobile app already prevents typing more than 15 password characters, but the backend should also validate this.
+
+### Local Cache Behavior
+
+The app stores this data locally after successful login/register:
+
+```json
+{
+  "name": "Saurabh Yadav",
+  "username": "saurabh123",
+  "email": "saurabh@example.com",
+  "accessToken": "jwt-access-token",
+  "refreshToken": "optional-refresh-token"
+}
+```
+
+Important security rule:
+
+- Cached profile data must never be treated as proof of authentication.
+- Every new login after logout must be verified by `POST /api/auth/login`.
+- Protected endpoints must require `Authorization: Bearer <token>`.
 
 ## Socket.IO Communication
 
@@ -104,8 +298,10 @@ Use the same host for REST and Socket.IO unless the backend deploys them separat
 
 The production backend should provide:
 
-- Auth endpoints that return `accessToken` and `refreshToken`.
+- Auth endpoints for register, login, profile refresh, token refresh, and logout.
+- Login and register responses that return a token plus `user.name`, `user.username`, and `user.email`.
 - Protected REST endpoints that accept `Authorization: Bearer <token>`.
+- Account profile endpoint that returns latest Name and Email for offline-cache updates.
 - Device command endpoints for relay, board, global, and AC controls.
 - History data with `filter`, `summary`, and `records`.
 - Custom history filtering with `filter=custom`, `fromDate=YYYY-MM-DD`, and `toDate=YYYY-MM-DD`.
@@ -307,6 +503,7 @@ npm test
 - The current History UI displays energy records only.
 - AC state is inferred from local commands and live sensor current because the backend does not broadcast full AC state over Socket.IO.
 - Some dashboard/alert/device socket channels are stubbed until backend events are fully documented.
+- The Account page offline fallback only displays the last successfully cached Name and Email.
 - Android release signing must be replaced with a production keystore before distribution.
 - The default Jest setup may need transform configuration updates for React Navigation ESM packages before tests can run in every environment.
 

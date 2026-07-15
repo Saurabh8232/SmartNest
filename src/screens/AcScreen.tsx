@@ -1,6 +1,15 @@
+// AC controller screen.
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import {
+  Alert,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Feather';
@@ -15,14 +24,13 @@ import colors from '../constants/colors';
 
 const CACHE_KEY = '@smartnest_ac_v1';
 
-// Mode selector removed — hardware firmware does not support mode changes via MQTT
-// Firmware-supported fan values.
+// Firmware supports fan speed only, not mode changes.
 const FAN_SPEEDS = [
-  { key: 'min',  label: 'Min'  },
-  { key: 'low',  label: 'Low'  },
-  { key: 'med',  label: 'Med'  },
+  { key: 'min', label: 'Min' },
+  { key: 'low', label: 'Low' },
+  { key: 'med', label: 'Med' },
   { key: 'high', label: 'High' },
-  { key: 'max',  label: 'Max'  },
+  { key: 'max', label: 'Max' },
   { key: 'auto', label: 'Auto' },
 ] as const;
 
@@ -41,13 +49,22 @@ const DEFAULT_AC: AcStatus = {
 const MIN_TEMP = 16;
 const MAX_TEMP = 30;
 
-const paramCardStyle = (color: string) => [styles.paramCard, { borderTopColor: color + '99', borderTopWidth: 2 }];
+const paramCardStyle = (color: string) => [
+  styles.paramCard,
+  { borderTopColor: color + '99', borderTopWidth: 2 },
+];
 
 function commandErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
-function TemperatureDial({ temperature, isOn }: { temperature: number; isOn: boolean }) {
+function TemperatureDial({
+  temperature,
+  isOn,
+}: {
+  temperature: number;
+  isOn: boolean;
+}) {
   const SIZE = 200;
   const CX = SIZE / 2;
   const CY = SIZE / 2;
@@ -76,18 +93,44 @@ function TemperatureDial({ temperature, isOn }: { temperature: number; isOn: boo
   return (
     <View style={styles.dialCenter}>
       <Svg width={SIZE} height={SIZE}>
-        <Path d={arc(START, START + SWEEP)} stroke={colors.border} strokeWidth={SW} fill="none" strokeLinecap="round" />
+        <Path
+          d={arc(START, START + SWEEP)}
+          stroke={colors.border}
+          strokeWidth={SW}
+          fill="none"
+          strokeLinecap="round"
+        />
         {progress > 0 && (
-          <Path d={arc(START, endAngle)} stroke={activeColor} strokeWidth={SW} fill="none" strokeLinecap="round" />
+          <Path
+            d={arc(START, endAngle)}
+            stroke={activeColor}
+            strokeWidth={SW}
+            fill="none"
+            strokeLinecap="round"
+          />
         )}
-        {progress > 0 && <Circle cx={knob.x} cy={knob.y} r={7} fill={activeColor} />}
+        {progress > 0 && (
+          <Circle cx={knob.x} cy={knob.y} r={7} fill={activeColor} />
+        )}
       </Svg>
       <View style={styles.dialOverlay}>
-        <Text style={[styles.dialTemp, { color: isOn ? colors.primary : colors.mutedForeground }]}>
+        <Text
+          style={[
+            styles.dialTemp,
+            { color: isOn ? colors.primary : colors.mutedForeground },
+          ]}
+        >
           {temperature}°
         </Text>
-        <Text style={styles.dialTempF}>{Math.round(temperature * 9 / 5 + 32)}°F</Text>
-        <Text style={[styles.dialStatus, { color: isOn ? colors.success : colors.destructive }]}>
+        <Text style={styles.dialTempF}>
+          {Math.round((temperature * 9) / 5 + 32)}°F
+        </Text>
+        <Text
+          style={[
+            styles.dialStatus,
+            { color: isOn ? colors.success : colors.destructive },
+          ]}
+        >
           {isOn ? 'ON' : 'OFF'}
         </Text>
       </View>
@@ -126,70 +169,134 @@ export default function AcScreen() {
       AsyncStorage.setItem(CACHE_KEY, JSON.stringify(status)).catch(() => {});
     });
     const removeConnection = subscribeToConnection(
-      () => { setOffline(false); load(); },
-      () => { setOffline(true); setRefreshing(false); },
+      () => {
+        setOffline(false);
+        load();
+      },
+      () => {
+        setOffline(true);
+        setRefreshing(false);
+      },
     );
-    return () => { removeAc(); removeConnection(); };
+    return () => {
+      removeAc();
+      removeConnection();
+    };
   }, [load]);
 
-  const send = useCallback(async (action: string, value?: unknown) => {
-    setData(prev => {
-      const next = (() => {
-        if (action === 'power_on')         return { ...prev, isOn: true };
-        if (action === 'power_off')        return { ...prev, isOn: false };
-        if (action === 'temperature_up')   return { ...prev, temperature: Math.min(MAX_TEMP, prev.temperature + 1) };
-        if (action === 'temperature_down') return { ...prev, temperature: Math.max(MIN_TEMP, prev.temperature - 1) };
-        if (action === 'set_temperature')  return { ...prev, temperature: value as number };
-        if (action === 'set_fan_speed')    return { ...prev, fanSpeed: value as AcStatus['fanSpeed'] };
-        return prev;
-      })();
-      AsyncStorage.setItem(CACHE_KEY, JSON.stringify(next)).catch(() => {});
-      return next;
-    });
-    if (!offline) {
-      sendAcCommand(action, value).catch(error => {
-        Alert.alert('Command Failed', commandErrorMessage(error, 'Unable to send the AC command.'));
+  const send = useCallback(
+    async (action: string, value?: unknown) => {
+      setData(prev => {
+        const next = (() => {
+          if (action === 'power_on') return { ...prev, isOn: true };
+          if (action === 'power_off') return { ...prev, isOn: false };
+          if (action === 'temperature_up')
+            return {
+              ...prev,
+              temperature: Math.min(MAX_TEMP, prev.temperature + 1),
+            };
+          if (action === 'temperature_down')
+            return {
+              ...prev,
+              temperature: Math.max(MIN_TEMP, prev.temperature - 1),
+            };
+          if (action === 'set_temperature')
+            return { ...prev, temperature: value as number };
+          if (action === 'set_fan_speed')
+            return { ...prev, fanSpeed: value as AcStatus['fanSpeed'] };
+          return prev;
+        })();
+        AsyncStorage.setItem(CACHE_KEY, JSON.stringify(next)).catch(() => {});
+        return next;
       });
-    }
-  }, [offline]);
+      if (!offline) {
+        sendAcCommand(action, value).catch(error => {
+          Alert.alert(
+            'Command Failed',
+            commandErrorMessage(error, 'Unable to send the AC command.'),
+          );
+        });
+      }
+    },
+    [offline],
+  );
 
-  const setQuickTemperature = useCallback((temperature: number) => {
-    if (!data.isOn) {
-      return;
-    }
+  const setQuickTemperature = useCallback(
+    (temperature: number) => {
+      if (!data.isOn) {
+        return;
+      }
 
-    send('set_temperature', temperature);
-  }, [data.isOn, send]);
+      send('set_temperature', temperature);
+    },
+    [data.isOn, send],
+  );
 
-  const setFanSpeed = useCallback((fanSpeed: AcStatus['fanSpeed']) => {
-    if (!data.isOn) {
-      return;
-    }
+  const setFanSpeed = useCallback(
+    (fanSpeed: AcStatus['fanSpeed']) => {
+      if (!data.isOn) {
+        return;
+      }
 
-    send('set_fan_speed', fanSpeed);
-  }, [data.isOn, send]);
+      send('set_fan_speed', fanSpeed);
+    },
+    [data.isOn, send],
+  );
 
   const params = [
-    { label: 'AC Current',           value: `${data.acCurrent.toFixed(2)}`,              unit: 'A',   icon: 'activity',         color: colors.primary },
-    { label: 'AC Power',             value: `${data.acPower.toFixed(0)}`,                unit: 'W',   icon: 'cpu',              color: colors.accent  },
-    { label: 'AC Energy Today',      value: `${data.acEnergyKwh.toFixed(3)}`,            unit: 'kWh', icon: 'battery-charging', color: colors.success },
-    { label: 'AC Cumulative Energy', value: `${data.pzemCumulativeEnergyKwh.toFixed(3)}`, unit: 'kWh', icon: 'archive',         color: colors.warning },
+    {
+      label: 'AC Current',
+      value: `${data.acCurrent.toFixed(2)}`,
+      unit: 'A',
+      icon: 'activity',
+      color: colors.primary,
+    },
+    {
+      label: 'AC Power',
+      value: `${data.acPower.toFixed(0)}`,
+      unit: 'W',
+      icon: 'cpu',
+      color: colors.accent,
+    },
+    {
+      label: 'AC Energy Today',
+      value: `${data.acEnergyKwh.toFixed(3)}`,
+      unit: 'kWh',
+      icon: 'battery-charging',
+      color: colors.success,
+    },
+    {
+      label: 'AC Cumulative Energy',
+      value: `${data.pzemCumulativeEnergyKwh.toFixed(3)}`,
+      unit: 'kWh',
+      icon: 'archive',
+      color: colors.warning,
+    },
   ];
 
   return (
     <ScrollView
       style={styles.scroll}
-      contentContainerStyle={[styles.content, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 76 }]}
+      contentContainerStyle={[
+        styles.content,
+        { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 76 },
+      ]}
       refreshControl={
         <RefreshControl
           refreshing={refreshing}
-          onRefresh={() => { setRefreshing(true); load(); }}
+          onRefresh={() => {
+            setRefreshing(true);
+            load();
+          }}
           tintColor={colors.primary}
         />
       }
     >
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.backBtn}
+        >
           <Icon name="arrow-left" size={18} color={colors.primary} />
         </TouchableOpacity>
         <View style={styles.flex1}>
@@ -225,18 +332,32 @@ export default function AcScreen() {
           </TouchableOpacity>
         </View>
 
-        <Text style={styles.tempRange}>{MIN_TEMP}° — {MAX_TEMP}°C</Text>
+        <Text style={styles.tempRange}>
+          {MIN_TEMP}° — {MAX_TEMP}°C
+        </Text>
 
         <TouchableOpacity
           onPress={() => send(data.isOn ? 'power_off' : 'power_on')}
-          style={[styles.powerBtn, {
-            backgroundColor: data.isOn ? colors.primary : colors.secondary,
-            borderColor: data.isOn ? colors.primary : colors.border,
-          }]}
+          style={[
+            styles.powerBtn,
+            {
+              backgroundColor: data.isOn ? colors.primary : colors.secondary,
+              borderColor: data.isOn ? colors.primary : colors.border,
+            },
+          ]}
           activeOpacity={0.85}
         >
-          <Icon name="power" size={22} color={data.isOn ? colors.background : colors.mutedForeground} />
-          <Text style={[styles.powerBtnText, { color: data.isOn ? colors.background : colors.mutedForeground }]}>
+          <Icon
+            name="power"
+            size={22}
+            color={data.isOn ? colors.background : colors.mutedForeground}
+          />
+          <Text
+            style={[
+              styles.powerBtnText,
+              { color: data.isOn ? colors.background : colors.mutedForeground },
+            ]}
+          >
             POWER {data.isOn ? 'ON' : 'OFF'}
           </Text>
         </TouchableOpacity>
@@ -246,10 +367,14 @@ export default function AcScreen() {
       <View style={styles.paramsGrid}>
         {params.map(p => (
           <View key={p.label} style={paramCardStyle(p.color)}>
-            <View style={[styles.paramIcon, { backgroundColor: p.color + '1a' }]}>
+            <View
+              style={[styles.paramIcon, { backgroundColor: p.color + '1a' }]}
+            >
               <Icon name={p.icon} size={15} color={p.color} />
             </View>
-            <Text style={[styles.paramValue, { color: p.color }]}>{p.value}</Text>
+            <Text style={[styles.paramValue, { color: p.color }]}>
+              {p.value}
+            </Text>
             <Text style={styles.paramUnit}>{p.unit}</Text>
             <Text style={styles.paramLabel}>{p.label.toUpperCase()}</Text>
           </View>
@@ -264,12 +389,22 @@ export default function AcScreen() {
             <TouchableOpacity
               key={t}
               onPress={() => setQuickTemperature(t)}
-              style={[styles.presetBtn, {
-                backgroundColor: active ? colors.primary : colors.card,
-                borderColor: active ? colors.primary : colors.border,
-              }]}
+              style={[
+                styles.presetBtn,
+                {
+                  backgroundColor: active ? colors.primary : colors.card,
+                  borderColor: active ? colors.primary : colors.border,
+                },
+              ]}
             >
-              <Text style={[styles.presetText, { color: active ? colors.background : colors.mutedForeground }]}>
+              <Text
+                style={[
+                  styles.presetText,
+                  {
+                    color: active ? colors.background : colors.mutedForeground,
+                  },
+                ]}
+              >
                 {t}°
               </Text>
             </TouchableOpacity>
@@ -285,9 +420,17 @@ export default function AcScreen() {
             <TouchableOpacity
               key={f.key}
               onPress={() => setFanSpeed(f.key)}
-              style={[styles.fanBtn, active ? styles.fanBtnActive : styles.fanBtnInactive]}
+              style={[
+                styles.fanBtn,
+                active ? styles.fanBtnActive : styles.fanBtnInactive,
+              ]}
             >
-              <Text style={[styles.fanLabel, active ? styles.fanLabelActive : styles.fanLabelInactive]}>
+              <Text
+                style={[
+                  styles.fanLabel,
+                  active ? styles.fanLabelActive : styles.fanLabelInactive,
+                ]}
+              >
                 {f.label}
               </Text>
             </TouchableOpacity>
@@ -303,35 +446,153 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: 16, gap: 12 },
   flex1: { flex: 1 },
   dialCenter: { alignItems: 'center', justifyContent: 'center' },
-  dialOverlay: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center' },
-  header: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 2 },
-  backBtn: { width: 38, height: 38, borderRadius: 10, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
+  dialOverlay: {
+    ...StyleSheet.absoluteFill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 2,
+  },
+  backBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   subtitle: { color: colors.mutedForeground, fontSize: 12 },
-  title: { color: colors.foreground, fontSize: 26, fontWeight: '800', letterSpacing: -0.5 },
-  offlinePill: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: colors.warning + '22', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1, borderColor: colors.warning + '44' },
+  title: {
+    color: colors.foreground,
+    fontSize: 26,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+  },
+  offlinePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: colors.warning + '22',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.warning + '44',
+  },
   offlineText: { color: colors.warning, fontSize: 11, fontWeight: '700' },
-  dialCard: { backgroundColor: colors.card, borderRadius: 20, borderWidth: 1, borderColor: colors.border, padding: 20, alignItems: 'center', gap: 12 },
+  dialCard: {
+    backgroundColor: colors.card,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 20,
+    alignItems: 'center',
+    gap: 12,
+  },
   dialRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  dialTemp: { fontSize: 52, fontWeight: '800', letterSpacing: -2, textAlign: 'center' },
-  dialTempF: { color: colors.mutedForeground, fontSize: 14, textAlign: 'center', marginTop: -4 },
-  dialStatus: { fontSize: 12, fontWeight: '800', letterSpacing: 2, marginTop: 4 },
-  tempBtn: { width: 52, height: 52, borderRadius: 26, backgroundColor: colors.primary + '22', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.primary + '44' },
+  dialTemp: {
+    fontSize: 52,
+    fontWeight: '800',
+    letterSpacing: -2,
+    textAlign: 'center',
+  },
+  dialTempF: {
+    color: colors.mutedForeground,
+    fontSize: 14,
+    textAlign: 'center',
+    marginTop: -4,
+  },
+  dialStatus: {
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 2,
+    marginTop: 4,
+  },
+  tempBtn: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: colors.primary + '22',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.primary + '44',
+  },
   tempBtnDisabled: { opacity: 0.5 },
   tempRange: { color: colors.mutedForeground, fontSize: 12 },
-  powerBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 24, paddingVertical: 14, borderRadius: 30, borderWidth: 2, marginTop: 4 },
+  powerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 30,
+    borderWidth: 2,
+    marginTop: 4,
+  },
   powerBtnText: { fontSize: 13, fontWeight: '800', letterSpacing: 1 },
-  sectionTitle: { color: colors.mutedForeground, fontSize: 10, fontWeight: '700', letterSpacing: 1.5, marginTop: 4 },
+  sectionTitle: {
+    color: colors.mutedForeground,
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1.5,
+    marginTop: 4,
+  },
   paramsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  paramCard: { width: '47.5%', backgroundColor: colors.card, borderRadius: 14, borderWidth: 1, borderColor: colors.border, padding: 13, gap: 4 },
-  paramIcon: { width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginBottom: 2 },
+  paramCard: {
+    width: '47.5%',
+    backgroundColor: colors.card,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 13,
+    gap: 4,
+  },
+  paramIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 2,
+  },
   paramValue: { fontSize: 22, fontWeight: '800' },
   paramUnit: { fontSize: 11, color: colors.mutedForeground, marginTop: -2 },
-  paramLabel: { fontSize: 10, color: colors.mutedForeground, fontWeight: '600', marginTop: 2 },
+  paramLabel: {
+    fontSize: 10,
+    color: colors.mutedForeground,
+    fontWeight: '600',
+    marginTop: 2,
+  },
   presetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  presetBtn: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 22, borderWidth: 1 },
+  presetBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 22,
+    borderWidth: 1,
+  },
   presetText: { fontSize: 13, fontWeight: '600' },
-  fanRow: { flexDirection: 'row', backgroundColor: colors.card, borderRadius: 14, borderWidth: 1, borderColor: colors.border, padding: 4, gap: 2 },
-  fanBtn: { flex: 1, paddingVertical: 12, borderRadius: 10, alignItems: 'center' },
+  fanRow: {
+    flexDirection: 'row',
+    backgroundColor: colors.card,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 4,
+    gap: 2,
+  },
+  fanBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
   fanLabel: { fontSize: 13 },
   fanBtnActive: { backgroundColor: colors.primary },
   fanBtnInactive: { backgroundColor: 'transparent' },

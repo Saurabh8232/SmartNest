@@ -1,3 +1,4 @@
+// Authentication REST calls and token persistence.
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { REST_BASE_URL } from '../config/communication';
 
@@ -5,14 +6,23 @@ const STORAGE_KEY = '@smartnest_auth_session';
 const REQUEST_TIMEOUT_MS = 12000;
 
 export interface AuthSession {
+  id?: number | string;
+  name: string;
   username: string;
+  email: string;
   accessToken: string;
   refreshToken: string;
-  isDemo: boolean;
 }
 
 export interface LoginCredentials {
   username: string;
+  password: string;
+}
+
+export interface RegisterPayload {
+  name: string;
+  username: string;
+  email: string;
   password: string;
 }
 
@@ -35,16 +45,9 @@ async function persistSession(session: AuthSession | null): Promise<void> {
   notifySessionListeners();
 }
 
-function buildDemoSession(username: string): AuthSession {
-  return {
-    username,
-    accessToken: '',
-    refreshToken: '',
-    isDemo: true,
-  };
-}
-
-async function parseResponseMessage(response: Response): Promise<string | null> {
+async function parseResponseMessage(
+  response: Response,
+): Promise<string | null> {
   try {
     const json = await response.json();
     if (typeof json?.error === 'string') return json.error;
@@ -53,11 +56,17 @@ async function parseResponseMessage(response: Response): Promise<string | null> 
   return null;
 }
 
-async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+): Promise<Response> {
   const requestInput = input instanceof URL ? input.toString() : input;
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
-    timeoutId = setTimeout(() => reject(new Error('Request timed out')), REQUEST_TIMEOUT_MS);
+    timeoutId = setTimeout(
+      () => reject(new Error('Request timed out')),
+      REQUEST_TIMEOUT_MS,
+    );
   });
 
   try {
@@ -65,6 +74,50 @@ async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}
   } finally {
     if (timeoutId) clearTimeout(timeoutId);
   }
+}
+
+function normalizeAuthSession(json: any, fallbackUsername = ''): AuthSession {
+  const token = json?.token ?? json?.accessToken ?? json?.access_token;
+  const refreshToken = json?.refreshToken ?? json?.refresh_token ?? '';
+  const user =
+    json?.user ?? json?.data?.user ?? json?.profile ?? json?.data ?? {};
+
+  if (typeof token !== 'string' || token.length === 0) {
+    throw new Error('Invalid authentication response');
+  }
+
+  const username = user?.username ?? json?.username ?? fallbackUsername;
+  const name = user?.name ?? user?.fullName ?? json?.name ?? '';
+  const email = user?.email ?? json?.email ?? '';
+
+  if (typeof username !== 'string' || username.length === 0) {
+    throw new Error('Invalid authentication response');
+  }
+
+  return {
+    id: user?.id,
+    name: typeof name === 'string' ? name : '',
+    username,
+    email: typeof email === 'string' ? email : '',
+    accessToken: token,
+    refreshToken: typeof refreshToken === 'string' ? refreshToken : '',
+  };
+}
+
+function normalizeProfile(json: any, session: AuthSession): AuthSession {
+  const user =
+    json?.user ?? json?.data?.user ?? json?.profile ?? json?.data ?? json;
+  const name = user?.name ?? user?.fullName ?? session.name;
+  const email = user?.email ?? session.email;
+  const username = user?.username ?? session.username;
+
+  return {
+    ...session,
+    id: user?.id ?? session.id,
+    name: typeof name === 'string' ? name : session.name,
+    username: typeof username === 'string' ? username : session.username,
+    email: typeof email === 'string' ? email : session.email,
+  };
 }
 
 export async function loadStoredSession(): Promise<AuthSession | null> {
@@ -77,12 +130,18 @@ export async function loadStoredSession(): Promise<AuthSession | null> {
 
   try {
     const parsed = JSON.parse(raw) as Partial<AuthSession>;
-    if (typeof parsed.username === 'string') {
+    if (
+      typeof parsed.username === 'string' &&
+      typeof parsed.accessToken === 'string'
+    ) {
       currentSession = {
+        id: parsed.id,
+        name: typeof parsed.name === 'string' ? parsed.name : '',
         username: parsed.username,
-        accessToken: typeof parsed.accessToken === 'string' ? parsed.accessToken : '',
-        refreshToken: typeof parsed.refreshToken === 'string' ? parsed.refreshToken : '',
-        isDemo: Boolean(parsed.isDemo),
+        email: typeof parsed.email === 'string' ? parsed.email : '',
+        accessToken: parsed.accessToken,
+        refreshToken:
+          typeof parsed.refreshToken === 'string' ? parsed.refreshToken : '',
       };
       notifySessionListeners();
       return currentSession;
@@ -110,84 +169,115 @@ export function getAccessToken(): string | null {
   return currentSession?.accessToken || null;
 }
 
-export async function login(credentials: LoginCredentials): Promise<AuthSession> {
-  try {
-    const response = await fetchWithTimeout(`${REST_BASE_URL}/api/auth/login`, {
+export async function login(
+  credentials: LoginCredentials,
+): Promise<AuthSession> {
+  const response = await fetchWithTimeout(`${REST_BASE_URL}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      username: credentials.username,
+      password: credentials.password,
+    }),
+  });
+
+  if (response.ok) {
+    const json = await response.json();
+    const session = normalizeAuthSession(json, credentials.username);
+    await persistSession(session);
+    return session;
+  }
+
+  const message = await parseResponseMessage(response);
+  throw new Error(
+    message ||
+      (response.status === 401
+        ? 'Invalid credentials'
+        : `HTTP ${response.status}`),
+  );
+}
+
+export async function register(payload: RegisterPayload): Promise<AuthSession> {
+  const response = await fetchWithTimeout(
+    `${REST_BASE_URL}/api/auth/register`,
+    {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(credentials),
-    });
+      body: JSON.stringify(payload),
+    },
+  );
 
-    if (response.ok) {
-      const json = await response.json();
-      if (typeof json?.accessToken !== 'string' || typeof json?.refreshToken !== 'string') {
-        throw new Error('Invalid authentication response');
-      }
-
-      const session: AuthSession = {
-        username: credentials.username,
-        accessToken: json.accessToken,
-        refreshToken: json.refreshToken,
-        isDemo: false,
-      };
-      await persistSession(session);
-      return session;
-    }
-
-    if (response.status === 400 || response.status === 401) {
-      const message = await parseResponseMessage(response);
-      throw new Error(message || 'Invalid credentials');
-    }
-
-    if (response.status === 404 || response.status === 405 || response.status === 501) {
-      const session = buildDemoSession(credentials.username);
-      await persistSession(session);
-      return session;
-    }
-
-    const message = await parseResponseMessage(response);
-    throw new Error(message || `HTTP ${response.status}`);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (
-      message.toLowerCase().includes('network request failed') ||
-      message.toLowerCase().includes('failed to fetch')
-    ) {
-      const session = buildDemoSession(credentials.username);
-      await persistSession(session);
-      return session;
-    }
-    throw error;
+  if (response.ok) {
+    const json = await response.json();
+    const session = normalizeAuthSession(json, payload.username);
+    await persistSession(session);
+    return session;
   }
+
+  const message = await parseResponseMessage(response);
+  throw new Error(message || `HTTP ${response.status}`);
+}
+
+export async function fetchProfile(): Promise<AuthSession> {
+  if (!currentSession?.accessToken) {
+    throw new Error('Authentication required');
+  }
+
+  const response = await fetchWithTimeout(`${REST_BASE_URL}/api/auth/profile`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${currentSession.accessToken}`,
+    },
+  });
+
+  if (response.ok) {
+    const json = await response.json();
+    const session = normalizeProfile(json, currentSession);
+    await persistSession(session);
+    return session;
+  }
+
+  const message = await parseResponseMessage(response);
+  throw new Error(message || `HTTP ${response.status}`);
 }
 
 export async function refreshAccessToken(): Promise<AuthSession | null> {
-  if (!currentSession || currentSession.isDemo || !currentSession.refreshToken) {
+  if (!currentSession || !currentSession.refreshToken) {
     return currentSession;
   }
 
   try {
-    const response = await fetchWithTimeout(`${REST_BASE_URL}/api/auth/refresh`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken: currentSession.refreshToken }),
-    });
+    const response = await fetchWithTimeout(
+      `${REST_BASE_URL}/api/auth/refresh`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken: currentSession.refreshToken }),
+      },
+    );
 
     if (response.ok) {
       const json = await response.json();
-      if (typeof json?.accessToken !== 'string') {
+      const accessToken =
+        json?.accessToken ?? json?.token ?? json?.access_token;
+      if (typeof accessToken !== 'string') {
         throw new Error('Invalid refresh response');
       }
 
       const nextSession: AuthSession = {
         ...currentSession,
-        accessToken: json.accessToken,
+        accessToken,
       };
       await persistSession(nextSession);
       return nextSession;
     }
 
-    if (response.status === 404 || response.status === 405 || response.status === 501) {
+    if (
+      response.status === 404 ||
+      response.status === 405 ||
+      response.status === 501
+    ) {
       return currentSession;
     }
 
@@ -216,13 +306,15 @@ export async function clearSession(): Promise<void> {
 
 export async function logout(): Promise<void> {
   const session = currentSession;
-  if (session && !session.isDemo && session.refreshToken) {
+  if (session?.refreshToken) {
     try {
       await fetchWithTimeout(`${REST_BASE_URL}/api/auth/logout`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(session.accessToken ? { Authorization: `Bearer ${session.accessToken}` } : {}),
+          ...(session.accessToken
+            ? { Authorization: `Bearer ${session.accessToken}` }
+            : {}),
         },
         body: JSON.stringify({ refreshToken: session.refreshToken }),
       });
@@ -232,7 +324,10 @@ export async function logout(): Promise<void> {
   await clearSession();
 }
 
-export async function authFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+export async function authFetch(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+): Promise<Response> {
   const baseHeaders = new Headers(init.headers);
   const session = currentSession;
 
@@ -241,10 +336,11 @@ export async function authFetch(input: RequestInfo | URL, init: RequestInit = {}
   }
 
   const requestInput = input instanceof URL ? input.toString() : input;
-  const makeRequest = (headers: Headers) => fetchWithTimeout(requestInput, { ...init, headers });
+  const makeRequest = (headers: Headers) =>
+    fetchWithTimeout(requestInput, { ...init, headers });
   let response = await makeRequest(baseHeaders);
 
-  if (response.status !== 401 || !session?.refreshToken || session.isDemo) {
+  if (response.status !== 401 || !session?.refreshToken) {
     return response;
   }
 

@@ -1,3 +1,4 @@
+// Shared communication payload types.
 export interface TimeSeriesPoint {
   timestamp: string;
   value: number;
@@ -5,10 +6,10 @@ export interface TimeSeriesPoint {
 
 export interface SensorsPayload {
   voltage: number;
-  current: { main: number; digital: number; ac: number; };
-  power:   { ac: number; };
-  energy:  { acKwh: number; mainKwh: number; digitalKwh: number; };
-  environment: { temperatureC: number; humidityPct: number; };
+  current: { main: number; digital: number; ac: number };
+  power: { ac: number };
+  energy: { acKwh: number; mainKwh: number; digitalKwh: number };
+  environment: { temperatureC: number; humidityPct: number };
   lastUpdated: string;
 }
 
@@ -28,17 +29,17 @@ export interface RelaysPayload {
 
 export interface StatusPayload {
   uptime: number;
-  wifi: { ssid: string; rssi: number; };
+  wifi: { ssid: string; rssi: number };
   mqttStatus: number;
-  sd: { ok: boolean; total: number; used: number; };
+  sd: { ok: boolean; total: number; used: number };
   pzemHealth: boolean;
   dhtOk: boolean;
   lastUpdated: string;
 }
 
 export interface SlavesPayload {
-  digitalBoard: { online: boolean; rssi: number; lastSeenSecAgo: number; };
-  pzem:         { online: boolean; rssi: number; lastSeenSecAgo: number; };
+  digitalBoard: { online: boolean; rssi: number; lastSeenSecAgo: number };
+  pzem: { online: boolean; rssi: number; lastSeenSecAgo: number };
   lastUpdated: string;
 }
 
@@ -143,7 +144,6 @@ export interface IoTDevice {
   type: 'main-board' | 'ac-controller' | 'digital-board';
 }
 
-// ── History ──────────────────────────────────────────────────────
 export interface EnergyRecord {
   recordId: number;
   epoch: number;

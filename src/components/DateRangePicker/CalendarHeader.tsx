@@ -1,3 +1,4 @@
+// Month navigation header for the calendar.
 import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
@@ -5,8 +6,18 @@ import { headerStyles as s } from './styles';
 import { CalendarHeaderProps } from './types';
 
 const MONTH_NAMES = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
 ];
 
 function isSameMonth(a: Date, b: Date): boolean {

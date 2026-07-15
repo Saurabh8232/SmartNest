@@ -1,3 +1,4 @@
+// Date range picker prop types.
 export interface DateRangePickerProps {
   fromDate: Date | null;
   toDate: Date | null;

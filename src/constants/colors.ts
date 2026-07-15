@@ -1,3 +1,4 @@
+// Shared color palette.
 const colors = {
   background: '#0b1120',
   card: '#131c2e',

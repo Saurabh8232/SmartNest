@@ -1,3 +1,4 @@
+// SmartNest logo rendered as SVG.
 import React from 'react';
 import { Image, ImageStyle, StyleProp, StyleSheet } from 'react-native';
 

@@ -1,3 +1,4 @@
+// Date display field for range selection.
 import React from 'react';
 import { TouchableOpacity, Text, View } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
@@ -6,15 +7,34 @@ import { DateInputProps } from './types';
 import colors from '../../constants/colors';
 
 const MONTH_ABBR = [
-  'Jan','Feb','Mar','Apr','May','Jun',
-  'Jul','Aug','Sep','Oct','Nov','Dec',
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
 ];
 
 function formatDate(d: Date): string {
-  return `${MONTH_ABBR[d.getMonth()]} ${String(d.getDate()).padStart(2,'0')}, ${d.getFullYear()}`;
+  return `${MONTH_ABBR[d.getMonth()]} ${String(d.getDate()).padStart(
+    2,
+    '0',
+  )}, ${d.getFullYear()}`;
 }
 
-export default function DateInput({ label, date, placeholder, isActive, onPress }: DateInputProps) {
+export default function DateInput({
+  label,
+  date,
+  placeholder,
+  isActive,
+  onPress,
+}: DateInputProps) {
   return (
     <TouchableOpacity
       onPress={onPress}

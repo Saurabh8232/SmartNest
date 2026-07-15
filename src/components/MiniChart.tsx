@@ -1,13 +1,25 @@
+// Lightweight chart for small trend previews.
 import React, { useState } from 'react';
 import { LayoutChangeEvent, StyleSheet, View } from 'react-native';
 
-interface Point { timestamp: string; value: number; }
-interface Props { data: readonly Point[]; color?: string; height?: number; width?: number; }
+interface Point {
+  timestamp: string;
+  value: number;
+}
+interface Props {
+  data: readonly Point[];
+  color?: string;
+  height?: number;
+  width?: number;
+}
 
 // Cap rendered points to keep large history ranges responsive.
 const MAX_CHART_POINTS = 60;
 
-function downsampleData(data: readonly Point[], maxPoints: number): readonly Point[] {
+function downsampleData(
+  data: readonly Point[],
+  maxPoints: number,
+): readonly Point[] {
   if (data.length <= maxPoints) return data;
   const step = data.length / maxPoints;
   const result: Point[] = [];
@@ -17,7 +29,12 @@ function downsampleData(data: readonly Point[], maxPoints: number): readonly Poi
   return result;
 }
 
-export default function MiniChart({ data: rawData, color = '#00d4ff', height = 56, width: initialWidth = 0 }: Props) {
+export default function MiniChart({
+  data: rawData,
+  color = '#00d4ff',
+  height = 56,
+  width: initialWidth = 0,
+}: Props) {
   const [width, setWidth] = useState(initialWidth);
 
   const onLayout = (e: LayoutChangeEvent) => {
@@ -47,7 +64,12 @@ export default function MiniChart({ data: rawData, color = '#00d4ff', height = 5
   }));
 
   // Each segment is a rotated View between adjacent points.
-  const segments: Array<{ cx: number; cy: number; length: number; angle: number }> = [];
+  const segments: Array<{
+    cx: number;
+    cy: number;
+    length: number;
+    angle: number;
+  }> = [];
   for (let i = 0; i < points.length - 1; i++) {
     const a = points[i];
     const b = points[i + 1];

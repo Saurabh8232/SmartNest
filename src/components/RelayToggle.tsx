@@ -1,3 +1,4 @@
+// Relay toggle control with status display.
 import React from 'react';
 import { StyleSheet, Switch, Text, View } from 'react-native';
 import colors from '../constants/colors';
@@ -14,23 +15,48 @@ interface Props {
   relayNumber?: number;
 }
 
-export default function RelayToggle({ id, name, isOn, current, power, status, onToggle, disabled, relayNumber }: Props) {
+export default function RelayToggle({
+  id,
+  name,
+  isOn,
+  current,
+  power,
+  status,
+  onToggle,
+  disabled,
+  relayNumber,
+}: Props) {
   const statusColor =
-    status === 'error' ? colors.destructive :
-    status === 'offline' ? colors.mutedForeground :
-    isOn ? colors.success : colors.border;
+    status === 'error'
+      ? colors.destructive
+      : status === 'offline'
+      ? colors.mutedForeground
+      : isOn
+      ? colors.success
+      : colors.border;
 
   return (
-    <View style={[styles.card, { borderColor: isOn ? statusColor + '44' : colors.border }]}>
+    <View
+      style={[
+        styles.card,
+        { borderColor: isOn ? statusColor + '44' : colors.border },
+      ]}
+    >
       <View style={[styles.dot, { backgroundColor: statusColor }]} />
       <View style={styles.info}>
         {relayNumber !== undefined && (
           <Text style={styles.relayNum}>Relay {relayNumber}</Text>
         )}
-        <Text style={styles.name} numberOfLines={1}>{name}</Text>
+        <Text style={styles.name} numberOfLines={1}>
+          {name}
+        </Text>
         <View style={styles.metrics}>
-          {current !== undefined && <Text style={styles.metric}>{current.toFixed(2)} A</Text>}
-          {power !== undefined && power > 0 && <Text style={styles.metric}>{power.toFixed(0)} W</Text>}
+          {current !== undefined && (
+            <Text style={styles.metric}>{current.toFixed(2)} A</Text>
+          )}
+          {power !== undefined && power > 0 && (
+            <Text style={styles.metric}>{power.toFixed(0)} W</Text>
+          )}
         </View>
       </View>
       <Switch
@@ -46,8 +72,13 @@ export default function RelayToggle({ id, name, isOn, current, power, status, on
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: colors.card, borderRadius: 14, borderWidth: 1,
-    padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: colors.card,
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
   dot: { width: 10, height: 10, borderRadius: 5 },
   info: { flex: 1 },

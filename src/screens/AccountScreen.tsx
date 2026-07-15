@@ -1,9 +1,16 @@
-import React, { useEffect, useRef } from 'react';
+// Account, diagnostics, and about screens.
+import React, { useCallback, useEffect, useRef } from 'react';
 import {
-  Alert, Animated, Linking, ScrollView, StyleSheet, Text,
-  TouchableOpacity, View,
+  Alert,
+  Animated,
+  Linking,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
 import { useAuth } from '../authentication/AuthContext';
@@ -70,29 +77,45 @@ const TEAM = [
 ];
 
 const TECH_STACK = [
-  'React Native', 'TypeScript', 'Node.js', 'Socket.IO',
-  'REST API', 'ESP32', 'MQTT', 'Android Studio', 'Git', 'GitHub',
+  'React Native',
+  'TypeScript',
+  'Node.js',
+  'Socket.IO',
+  'REST API',
+  'ESP32',
+  'MQTT',
+  'Android Studio',
+  'Git',
+  'GitHub',
 ];
 
 function AboutSection() {
   const headerAnim = useRef(new Animated.Value(0)).current;
-  const cardAnims  = useRef(TEAM.map(() => new Animated.Value(0))).current;
-  const chipsAnim  = useRef(new Animated.Value(0)).current;
+  const cardAnims = useRef(TEAM.map(() => new Animated.Value(0))).current;
+  const chipsAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     Animated.timing(headerAnim, {
-      toValue: 1, duration: 500, useNativeDriver: true,
+      toValue: 1,
+      duration: 500,
+      useNativeDriver: true,
     }).start();
 
     const cardSequence = cardAnims.map((anim, i) =>
       Animated.timing(anim, {
-        toValue: 1, duration: 400, delay: 200 + i * 120, useNativeDriver: true,
+        toValue: 1,
+        duration: 400,
+        delay: 200 + i * 120,
+        useNativeDriver: true,
       }),
     );
     Animated.parallel(cardSequence).start();
 
     Animated.timing(chipsAnim, {
-      toValue: 1, duration: 400, delay: 800, useNativeDriver: true,
+      toValue: 1,
+      duration: 400,
+      delay: 800,
+      useNativeDriver: true,
     }).start();
   }, [cardAnims, chipsAnim, headerAnim]);
 
@@ -103,7 +126,14 @@ function AboutSection() {
           about.heroCard,
           {
             opacity: headerAnim,
-            transform: [{ translateY: headerAnim.interpolate({ inputRange: [0, 1], outputRange: [-16, 0] }) }],
+            transform: [
+              {
+                translateY: headerAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [-16, 0],
+                }),
+              },
+            ],
           },
         ]}
       >
@@ -111,14 +141,17 @@ function AboutSection() {
           <SmartNestLogo size={44} />
         </View>
         <Text style={about.heroTitle}>SmartNest</Text>
-        <Text style={about.heroTagline}>Smart Home Automation &{'\n'}Energy Monitoring System</Text>
+        <Text style={about.heroTagline}>
+          Smart Home Automation &{'\n'}Energy Monitoring System
+        </Text>
         <View style={about.versionBadge}>
           <Text style={about.versionText}>Version 1.0.0 Beta</Text>
         </View>
         <Text style={about.heroDesc}>
-          SmartNest is an IoT-based Smart Home Automation and Energy Monitoring platform designed
-          to provide real-time monitoring, intelligent device control, and historical energy
-          analytics using ESP32, REST APIs, and Socket.IO communication.
+          SmartNest is an IoT-based Smart Home Automation and Energy Monitoring
+          platform designed to provide real-time monitoring, intelligent device
+          control, and historical energy analytics using ESP32, REST APIs, and
+          Socket.IO communication.
         </Text>
       </Animated.View>
 
@@ -131,7 +164,14 @@ function AboutSection() {
             about.memberCard,
             {
               opacity: cardAnims[i],
-              transform: [{ translateY: cardAnims[i].interpolate({ inputRange: [0, 1], outputRange: [24, 0] }) }],
+              transform: [
+                {
+                  translateY: cardAnims[i].interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [24, 0],
+                  }),
+                },
+              ],
             },
           ]}
         >
@@ -151,14 +191,18 @@ function AboutSection() {
             </View>
             <View style={about.memberInfo}>
               <Text style={about.memberName}>{member.name}</Text>
-              <Text style={[about.memberRole, { color: member.color }]}>{member.role}</Text>
+              <Text style={[about.memberRole, { color: member.color }]}>
+                {member.role}
+              </Text>
             </View>
           </View>
 
           <View style={about.respList}>
             {member.responsibilities.map(r => (
               <View key={r} style={about.respRow}>
-                <View style={[about.respDot, { backgroundColor: member.color }]} />
+                <View
+                  style={[about.respDot, { backgroundColor: member.color }]}
+                />
                 <Text style={about.respText}>{r}</Text>
               </View>
             ))}
@@ -170,7 +214,9 @@ function AboutSection() {
             activeOpacity={0.75}
           >
             <Icon name="linkedin" size={14} color={member.color} />
-            <Text style={[about.linkedinText, { color: member.color }]}>LinkedIn</Text>
+            <Text style={[about.linkedinText, { color: member.color }]}>
+              LinkedIn
+            </Text>
           </TouchableOpacity>
         </Animated.View>
       ))}
@@ -190,7 +236,9 @@ function AboutSection() {
         <Icon name="book-open" size={18} color={colors.accent} />
         <View style={about.orgInfo}>
           <Text style={about.orgName}>Invertis University</Text>
-          <Text style={about.orgDept}>Department of Computer Science & Engineering</Text>
+          <Text style={about.orgDept}>
+            Department of Computer Science & Engineering
+          </Text>
           <Text style={about.orgLocation}>Bareilly, Uttar Pradesh</Text>
         </View>
       </Animated.View>
@@ -211,11 +259,17 @@ export function AboutScreen() {
   return (
     <ScrollView
       style={styles.scroll}
-      contentContainerStyle={[styles.content, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 76 }]}
+      contentContainerStyle={[
+        styles.content,
+        { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 76 },
+      ]}
       keyboardShouldPersistTaps="handled"
     >
       <View style={styles.headerRow}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.backBtn}
+        >
           <Icon name="arrow-left" size={18} color={colors.primary} />
         </TouchableOpacity>
         <View style={styles.flex1}>
@@ -231,12 +285,24 @@ export function AboutScreen() {
 export default function AccountScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
-  const { user, logout } = useAuth();
+  const { user, logout, refreshProfile } = useAuth();
+
+  useFocusEffect(
+    useCallback(() => {
+      refreshProfile().catch(() => {});
+    }, [refreshProfile]),
+  );
+
+  const displayName = user?.name || 'Unknown User';
+  const displayEmail = user?.email || 'Email unavailable';
 
   return (
     <ScrollView
       style={styles.scroll}
-      contentContainerStyle={[styles.content, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 76 }]}
+      contentContainerStyle={[
+        styles.content,
+        { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 76 },
+      ]}
       keyboardShouldPersistTaps="handled"
     >
       <View style={styles.header}>
@@ -247,34 +313,67 @@ export default function AccountScreen() {
       <View style={styles.profileCard}>
         <View style={styles.avatarWrap}>
           <Text style={styles.avatarInitial}>
-            {user?.username ? user.username.charAt(0).toUpperCase() : '?'}
+            {displayName.charAt(0).toUpperCase()}
           </Text>
         </View>
         <View style={styles.flex1}>
-          <Text style={styles.profileName}>{user?.username ?? 'Unknown User'}</Text>
-          <Text style={styles.profileDesc}>{user?.isDemo ? 'Demo session' : 'Authenticated session'}</Text>
-        </View>
-        <View style={styles.onlineBadge}>
-          <View style={[styles.bDot, { backgroundColor: colors.success }]} />
-          <Text style={[styles.bText, { color: colors.success }]}>Active</Text>
+          <Text style={styles.profileLabel}>Name</Text>
+          <Text style={styles.profileName}>{displayName}</Text>
+          <Text style={[styles.profileLabel, styles.profileLabelSpaced]}>
+            Email
+          </Text>
+          <Text style={styles.profileDesc}>{displayEmail}</Text>
         </View>
       </View>
 
       <Text style={styles.sectionTitle}>A. DIAGNOSTICS</Text>
       <View style={styles.menuGroup}>
         {[
-          { icon: 'activity',  label: 'System Status',  val: 'Running',   valColor: colors.success, onPress: () => Alert.alert('System Status', 'Use STATUS command on Serial Monitor for full diagnostics including uptime, RSSI, relay states, and slave board status.') },
-          { icon: 'database',  label: 'SD Card Logs',   val: 'Available', valColor: colors.success, onPress: () => Alert.alert('SD Card Logs', 'Serial Monitor commands:\nLOGS LIST — view all log files\nLOGS VIEW <file> <chunk> — read 10 records') },
-          { icon: 'wifi',      label: 'WiFi Settings',  val: '',          valColor: colors.mutedForeground, onPress: () => Alert.alert('WiFi Settings', 'WiFi is configured on the ESP32 via Serial Monitor.\nCommand: RESET WIFI — clears credentials and restarts.') },
+          {
+            icon: 'activity',
+            label: 'System Status',
+            val: 'Running',
+            valColor: colors.success,
+            onPress: () =>
+              Alert.alert(
+                'System Status',
+                'Use STATUS command on Serial Monitor for full diagnostics including uptime, RSSI, relay states, and slave board status.',
+              ),
+          },
+          
+          {
+            icon: 'wifi',
+            label: 'WiFi Settings',
+            val: '',
+            valColor: colors.mutedForeground,
+            onPress: () =>
+              Alert.alert(
+                'WiFi Settings',
+                'WiFi is configured on the ESP32 via Serial Monitor.\nCommand: RESET WIFI — clears credentials and restarts.',
+              ),
+          },
         ].map((item, i) => (
-          <TouchableOpacity key={item.label} style={[styles.menuItem, i > 0 && styles.menuBorder]} onPress={item.onPress} activeOpacity={0.7}>
+          <TouchableOpacity
+            key={item.label}
+            style={[styles.menuItem, i > 0 && styles.menuBorder]}
+            onPress={item.onPress}
+            activeOpacity={0.7}
+          >
             <View style={[styles.menuIcon, styles.menuIconPrimary]}>
               <Icon name={item.icon} size={14} color={colors.primary} />
             </View>
             <Text style={styles.menuLabel}>{item.label}</Text>
             <View style={styles.menuRight}>
-              {item.val ? <Text style={[styles.menuVal, { color: item.valColor }]}>{item.val}</Text> : null}
-              <Icon name="chevron-right" size={14} color={colors.mutedForeground} />
+              {item.val ? (
+                <Text style={[styles.menuVal, { color: item.valColor }]}>
+                  {item.val}
+                </Text>
+              ) : null}
+              <Icon
+                name="chevron-right"
+                size={14}
+                color={colors.mutedForeground}
+              />
             </View>
           </TouchableOpacity>
         ))}
@@ -293,7 +392,11 @@ export default function AccountScreen() {
           <Text style={styles.menuLabel}>About</Text>
           <View style={styles.menuRight}>
             <Text style={styles.menuVal}>v1.0.0</Text>
-            <Icon name="chevron-right" size={14} color={colors.mutedForeground} />
+            <Icon
+              name="chevron-right"
+              size={14}
+              color={colors.mutedForeground}
+            />
           </View>
         </TouchableOpacity>
       </View>
@@ -301,8 +404,12 @@ export default function AccountScreen() {
       <TouchableOpacity
         style={styles.signOutBtn}
         activeOpacity={0.8}
-        onPress={() => Alert.alert('Sign Out', 'Are you sure you want to sign out?.',
-          [{ text: 'Cancel', style: 'cancel' }, { text: 'Sign Out', style: 'destructive', onPress: logout }])}
+        onPress={() =>
+          Alert.alert('Sign Out', 'Are you sure you want to sign out?.', [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Sign Out', style: 'destructive', onPress: logout },
+          ])
+        }
       >
         <Icon name="log-out" size={15} color={colors.destructive} />
         <Text style={styles.signOutText}>Sign Out</Text>
@@ -312,41 +419,117 @@ export default function AccountScreen() {
 }
 
 const styles = StyleSheet.create({
-  scroll:       { flex: 1, backgroundColor: colors.background },
-  content:      { paddingHorizontal: 16, gap: 10 },
+  scroll: { flex: 1, backgroundColor: colors.background },
+  content: { paddingHorizontal: 16, gap: 10 },
 
-  header:       { marginBottom: 2 },
-  headerRow:    { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 2 },
-  backBtn:      { width: 38, height: 38, borderRadius: 10, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
-  title:        { color: colors.foreground, fontSize: 26, fontWeight: '800', letterSpacing: -0.5 },
-  subtitle:     { color: colors.mutedForeground, fontSize: 12, marginTop: 3 },
+  header: { marginBottom: 2 },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 2,
+  },
+  backBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  title: {
+    color: colors.foreground,
+    fontSize: 26,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+  },
+  subtitle: { color: colors.mutedForeground, fontSize: 12, marginTop: 3 },
 
-  profileCard:  { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: colors.card, borderRadius: 16, borderWidth: 1, borderColor: colors.border, padding: 16 },
-  avatarWrap:   { width: 52, height: 52, borderRadius: 14, backgroundColor: colors.primary + '22', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.primary + '44' },
-  avatarInitial:{ color: colors.primary, fontSize: 22, fontWeight: '800' },
-  profileName:  { color: colors.foreground, fontSize: 15, fontWeight: '700' },
-  profileDesc:  { color: colors.mutedForeground, fontSize: 12, marginTop: 2 },
-  onlineBadge:  { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: colors.success + '22', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: colors.success + '44' },
-  bDot:         { width: 7, height: 7, borderRadius: 3.5 },
-  bText:        { fontSize: 11, fontWeight: '700' },
+  profileCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 16,
+  },
+  avatarWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 14,
+    backgroundColor: colors.primary + '22',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.primary + '44',
+  },
+  avatarInitial: { color: colors.primary, fontSize: 22, fontWeight: '800' },
+  profileLabel: {
+    color: colors.mutedForeground,
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1,
+  },
+  profileLabelSpaced: { marginTop: 10 },
+  profileName: { color: colors.foreground, fontSize: 15, fontWeight: '700' },
+  profileDesc: { color: colors.mutedForeground, fontSize: 12, marginTop: 2 },
 
-  sectionTitle: { color: colors.mutedForeground, fontSize: 10, fontWeight: '700', letterSpacing: 1.5, marginTop: 4 },
+  sectionTitle: {
+    color: colors.mutedForeground,
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1.5,
+    marginTop: 4,
+  },
 
-  menuGroup:    { backgroundColor: colors.card, borderRadius: 16, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' },
-  menuItem:     { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 14 },
-  menuBorder:   { borderTopWidth: 1, borderTopColor: colors.border },
-  menuIcon:     { width: 32, height: 32, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
-  menuLabel:    { flex: 1, color: colors.foreground, fontSize: 14 },
-  menuRight:    { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  menuVal:      { color: colors.mutedForeground, fontSize: 13 },
+  menuGroup: {
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  menuBorder: { borderTopWidth: 1, borderTopColor: colors.border },
+  menuIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  menuLabel: { flex: 1, color: colors.foreground, fontSize: 14 },
+  menuRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  menuVal: { color: colors.mutedForeground, fontSize: 13 },
 
-  menuIconPrimary:   { backgroundColor: colors.primary + '20' },
-  menuIconMuted:     { backgroundColor: colors.mutedForeground + '22' },
+  menuIconPrimary: { backgroundColor: colors.primary + '20' },
+  menuIconMuted: { backgroundColor: colors.mutedForeground + '22' },
 
-  signOutBtn:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: colors.destructive + '15', borderRadius: 16, borderWidth: 1, borderColor: colors.destructive + '40', paddingVertical: 15, marginTop: 4 },
-  signOutText:  { color: colors.destructive, fontSize: 15, fontWeight: '700' },
+  signOutBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: colors.destructive + '15',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.destructive + '40',
+    paddingVertical: 15,
+    marginTop: 4,
+  },
+  signOutText: { color: colors.destructive, fontSize: 15, fontWeight: '700' },
 
-  flex1:        { flex: 1 },
+  flex1: { flex: 1 },
 });
 
 const about = StyleSheet.create({
