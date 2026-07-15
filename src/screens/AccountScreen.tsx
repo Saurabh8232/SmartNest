@@ -145,7 +145,7 @@ function AboutSection() {
           Smart Home Automation &{'\n'}Energy Monitoring System
         </Text>
         <View style={about.versionBadge}>
-          <Text style={about.versionText}>Version 1.0.0 Beta</Text>
+          <Text style={about.versionText}>Version 2.0 Beta</Text>
         </View>
         <Text style={about.heroDesc}>
           SmartNest is an IoT-based Smart Home Automation and Energy Monitoring
@@ -244,7 +244,7 @@ function AboutSection() {
       </Animated.View>
 
       <View style={about.footer}>
-        <Text style={about.footerText}>Version 1.0.0 Beta</Text>
+        <Text style={about.footerText}>Version 2.0 Beta</Text>
         <Text style={about.footerText}>© 2026 SmartNest Team</Text>
         <Text style={about.footerText}>All Rights Reserved.</Text>
       </View>
@@ -391,7 +391,7 @@ export default function AccountScreen() {
           </View>
           <Text style={styles.menuLabel}>About</Text>
           <View style={styles.menuRight}>
-            <Text style={styles.menuVal}>v1.0.0</Text>
+            <Text style={styles.menuVal}>v2.0 Beta</Text>
             <Icon
               name="chevron-right"
               size={14}
