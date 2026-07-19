@@ -114,6 +114,7 @@ export default function LoginScreen() {
   const [showPass, setShowPass] = useState(false);
   const [showConfirmPass, setShowConfirmPass] = useState(false);
   const [error, setError] = useState('');
+  const [isSuccessMessage, setIsSuccessMessage] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
@@ -136,6 +137,7 @@ export default function LoginScreen() {
     setShowPass(false);
     setShowConfirmPass(false);
     setError('');
+    setIsSuccessMessage(false);
   };
 
   const handlePasswordChange = (value: string) => {
@@ -150,6 +152,7 @@ export default function LoginScreen() {
     if (isLoading) return;
 
     setError('');
+    setIsSuccessMessage(false);
     if (!username.trim()) {
       setError('Please enter your username.');
       return;
@@ -173,6 +176,7 @@ export default function LoginScreen() {
     if (isLoading) return;
 
     setError('');
+    setIsSuccessMessage(false);
     if (!fullName.trim()) {
       setError('Please enter your full name.');
       return;
@@ -207,7 +211,10 @@ export default function LoginScreen() {
         password,
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to register.');
+      const message =
+        err instanceof Error ? err.message : 'Unable to register.';
+      setIsSuccessMessage(message === 'Account is pending for admin approval.');
+      setError(message);
     } finally {
       setIsLoading(false);
     }
@@ -341,9 +348,25 @@ export default function LoginScreen() {
           ) : null}
 
           {error ? (
-            <View style={styles.errorRow}>
-              <Icon name="alert-circle" size={13} color={colors.destructive} />
-              <Text style={styles.errorText}>{error}</Text>
+            <View
+              style={[
+                styles.errorRow,
+                isSuccessMessage && styles.successRow,
+              ]}
+            >
+              <Icon
+                name={isSuccessMessage ? 'check-circle' : 'alert-circle'}
+                size={13}
+                color={isSuccessMessage ? colors.success : colors.destructive}
+              />
+              <Text
+                style={[
+                  styles.errorText,
+                  isSuccessMessage && styles.successText,
+                ]}
+              >
+                {error}
+              </Text>
             </View>
           ) : null}
 
@@ -458,6 +481,11 @@ const styles = StyleSheet.create({
     borderColor: colors.destructive + '33',
   },
   errorText: { color: colors.destructive, fontSize: 13, flex: 1 },
+  successRow: {
+    backgroundColor: colors.success + '15',
+    borderColor: colors.success + '33',
+  },
+  successText: { color: colors.success },
 
   loginBtn: {
     minHeight: 50,

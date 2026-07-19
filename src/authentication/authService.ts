@@ -12,6 +12,7 @@ export interface AuthSession {
   email: string;
   accessToken: string;
   refreshToken: string;
+  isDemo?: boolean;
 }
 
 export interface LoginCredentials {
@@ -209,6 +210,16 @@ export async function register(payload: RegisterPayload): Promise<AuthSession> {
 
   if (response.ok) {
     const json = await response.json();
+    const token = json?.token ?? json?.accessToken ?? json?.access_token;
+    const message =
+      typeof json?.message === 'string'
+        ? json.message
+        : 'Account is pending for admin approval.';
+
+    if (typeof token !== 'string' || token.length === 0) {
+      throw new Error(message);
+    }
+
     const session = normalizeAuthSession(json, payload.username);
     await persistSession(session);
     return session;
